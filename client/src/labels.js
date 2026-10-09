@@ -13,11 +13,12 @@ export const todayISO = () => {
 export const isLate = (t) => !!t.dueDate && t.status !== "done" && t.dueDate < todayISO();
 
 /** Couleur stable d'une étiquette, déduite de son nom (pas de catalogue à gérer). */
-export const labelColor = (name) => {
+export const labelHue = (name) => {
   let h = 0;
   for (const c of name.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return `hsl(${h} 60% 62%)`;
+  return h;
 };
+export const labelColor = (name) => `hsl(${labelHue(name)} 60% 62%)`;
 
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const fileSize = (n) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${Math.round(n / 1024)} Ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`);

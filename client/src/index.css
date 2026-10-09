@@ -191,19 +191,19 @@ button:disabled { opacity: .45; cursor: default; transform: none; }
 .load .bar i { display: block; height: 100%; background: var(--teal); border-radius: 99px; }
 
 /* ---------- Kanban (à plat, comme Odoo) ---------- */
-.kanban { min-height: 430px; display: flex; gap: 28px; padding: 16px 20px 28px; overflow-x: auto; align-items: flex-start; scroll-snap-type: x proximity; }
-.kcol { flex: 0 0 280px; min-height: 160px; scroll-snap-align: start; }
-.kcol-head { display: flex; align-items: center; gap: 8px; padding: 0 0 8px; }
-.kcol-head strong { font-weight: 600; font-size: 16px; letter-spacing: -.005em; }
+.kanban { min-height: 430px; display: flex; gap: 14px; padding: 14px 20px 28px; overflow-x: auto; align-items: flex-start; scroll-snap-type: x proximity; }
+.kcol { flex: 1 0 270px; max-width: 380px; min-height: 160px; scroll-snap-align: start; background: color-mix(in srgb, var(--lane) 75%, transparent); border-radius: 12px; padding: 10px 10px 12px; }
+.kcol-head { display: flex; align-items: center; gap: 8px; padding: 2px 2px 10px; }
+.kcol-head strong { font-weight: 600; font-size: 14.5px; letter-spacing: -.005em; }
 .kcol-head .icon-btn { margin-left: auto; }
 .sbar { display: flex; height: 5px; background: var(--bd); overflow: hidden; }
 .sbar i { display: block; }
-.kcount { text-align: right; color: var(--mut); font-size: 12px; font-weight: 600; margin: 3px 0 6px; line-height: 1.2; }
-.kcol-body { display: flex; flex-direction: column; border-radius: 4px; transition: background .15s, outline-color .15s; outline: 2px dashed transparent; outline-offset: 4px; min-height: 60px; }
+.kcount { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: 99px; background: var(--hov); color: var(--mut); font-size: 12px; font-weight: 600; }
+.kcount.bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.kcol-body { display: flex; flex-direction: column; gap: 8px; border-radius: 8px; transition: background .15s, outline-color .15s; outline: 2px dashed transparent; outline-offset: 4px; min-height: 60px; }
 .kcol.over .kcol-body { background: var(--teal-soft); outline-color: var(--teal); }
-.kcard { position: relative; display: grid; gap: 3px; padding: 9px 12px 7px 14px; cursor: grab; background: var(--card); border: 1px solid var(--bd); box-shadow: inset 3px 0 0 var(--stripe, transparent); transition: background .12s, box-shadow .12s; }
-.kcard + .kcard { margin-top: -1px; }
-.kcard:hover { background: var(--hov); z-index: 1; border-color: var(--bd-s); }
+.kcard { position: relative; display: grid; gap: 4px; padding: 10px 12px 8px; cursor: grab; background: var(--card); border: 1px solid var(--bd); border-radius: 10px; box-shadow: var(--sh-1); transition: box-shadow .15s, border-color .15s; }
+.kcard:hover { box-shadow: var(--sh-2); z-index: 1; border-color: var(--bd-s); }
 .kcard:active { cursor: grabbing; }
 .kcard:has(.menu) { z-index: 20; }
 .kcard.dragging { opacity: .4; }
@@ -241,7 +241,7 @@ button:disabled { opacity: .45; cursor: default; transform: none; }
 .lt select { flex: none; padding: 3px 6px; border-color: transparent; background: none; }
 .lt select:hover { border-color: var(--bd-s); }
 .lt .ttl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.lt .ttl .link { color: var(--tx); font-weight: 600; text-align: left; white-space: normal; }
+.lt .ttl .link { color: var(--tx); font-weight: 500; text-align: left; white-space: normal; }
 .lt .ttl .link:hover { color: var(--pri); text-decoration: none; }
 .lt .ass { display: flex; align-items: center; gap: 8px; }
 .lt .acts { text-align: right; white-space: nowrap; }
@@ -365,7 +365,7 @@ button:disabled { opacity: .45; cursor: default; transform: none; }
   .cp > select { flex: 1 1 140px !important; }
   .cp-count { display: none; }
   .kanban { padding: 6px 14px 24px; }
-  .kcol { flex-basis: 84vw; }
+  .kcol { flex: 0 0 84vw; max-width: none; }
   .table-wrap, .gantt { margin-left: 14px; margin-right: 14px; }
   .pgrid, .phead { padding-left: 14px; padding-right: 14px; }
   .pdesc { margin-left: 14px; }
@@ -692,3 +692,49 @@ button.cal2-more:hover { background: none; text-decoration: underline; }
 /* Barre de statut : durée passée dans chaque étape */
 .stbar button .dur { margin-left: 7px; padding: 1px 6px; border-radius: 99px; background: color-mix(in srgb, var(--mut) 16%, transparent); color: var(--mut); font-size: 10.5px; font-weight: 600; letter-spacing: .01em; }
 .stbar button.on .dur { background: var(--teal-soft); color: var(--teal); }
+
+/* Étiquettes : fond teinté + texte foncé (lisibles sur toutes les teintes), adaptées au thème */
+:root { --lbl-s: 75%; --lbl-bg: 90%; --lbl-fg: 25%; }
+:root[data-theme="dark"] { --lbl-s: 38%; --lbl-bg: 25%; --lbl-fg: 82%; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --lbl-s: 38%; --lbl-bg: 25%; --lbl-fg: 82%; } }
+.chip.label { background: hsl(var(--h, 200) var(--lbl-s) var(--lbl-bg)); color: hsl(var(--h, 200) 55% var(--lbl-fg)); font-weight: 600; }
+
+/* Carte projet : avancement */
+.pcard .pc-prog { margin-top: auto; display: grid; gap: 6px; }
+.pcard .pc-prog .track { height: 6px; border-radius: 99px; background: var(--bd); overflow: hidden; }
+.pcard .pc-prog .track i { display: block; height: 100%; background: var(--ok); border-radius: 99px; }
+.pcard .pc-prog + .pc-foot { margin-top: 0; }
+
+/* ---------- Revue en-tête projet (v8) ---------- */
+/* Titre : l'input s'ajuste au texte, l'engrenage reste collé au nom */
+.crumb2 .nm .ptitle { field-sizing: content; min-width: 3ch; max-width: min(40vw, 420px); }
+.crumb2 .nm .ptitle:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.crumb2 .nm > button { opacity: .55; transition: opacity .15s; }
+.crumb2 .nm:hover > button, .crumb2 .nm > button:focus-visible { opacity: 1; }
+
+/* Sections du projet : même langage arrondi que la recherche et les filtres */
+.subnav { gap: 6px; padding-top: 12px; }
+.pill { border-radius: 99px; padding: 5px 14px; line-height: 1.2; color: var(--mut); transition: background .15s, color .15s, border-color .15s; }
+.pill:hover { color: var(--tx); }
+.pill.on { color: var(--teal); font-weight: 600; }
+.pill:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* Commutateur de vues : cibles plus généreuses, icônes lisibles */
+.seg button { min-width: 32px; min-height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.seg button:not(.on) { opacity: .8; }
+.seg button:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+
+/* Compteur : chiffres alignés, discret */
+.cp-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Filtres rapides : hauteur homogène et survol cohérent */
+.pmeta-row { padding-top: 2px; gap: 6px; }
+.pmeta-row select, .pmeta-row .datef { min-height: 28px; display: inline-flex; align-items: center; }
+.pmeta-row select:hover, .pmeta-row .datef:hover { background: var(--hov); }
+
+/* Recherche : un peu plus de présence au centre */
+.cp-mid .search { min-height: 36px; box-shadow: var(--sh-1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill, .crumb2 .nm > button { transition: none; }
+}

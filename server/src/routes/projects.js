@@ -70,7 +70,19 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("projects").select(COLS).eq("organization_id", req.params.orgId).order("created_at", { ascending: false }),
   );
-  res.json(rows.map(toApi));
+  // Avancement affiché sur les cartes : tâches principales (hors sous-tâches), terminées / total.
+  // Un échec ne bloque pas la liste : les compteurs sont alors à 0.
+  const total = new Map();
+  const done = new Map();
+  if (rows.length > 0) {
+    const { data, error } = await db.from("tasks").select("project_id, status").is("parent_id", null).in("project_id", rows.map((r) => r.id));
+    if (error) console.warn("[projets] compteurs indisponibles :", error.message);
+    for (const t of data ?? []) {
+      total.set(t.project_id, (total.get(t.project_id) ?? 0) + 1);
+      if (t.status === "done") done.set(t.project_id, (done.get(t.project_id) ?? 0) + 1);
+    }
+  }
+  res.json(rows.map((r) => ({ ...toApi(r), taskCount: total.get(r.id) ?? 0, doneCount: done.get(r.id) ?? 0 })));
 });
 
 router.get("/:id", requirePermission("projects.read"), async (req, res) => {
