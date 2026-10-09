@@ -1,0 +1,93 @@
+import { useState } from "react";
+import { api } from "./api.js";
+import { DateField, Icon, Menu } from "./ui.jsx";
+import { PRIORITY, PROJECT_STATUS } from "./labels.js";
+
+/** Nom du projet, modifiable sur place (dans le fil d'Ariane du panneau de contrôle). */
+export function ProjectTitle({ orgId, project, onChange }) {
+  const [name, setName] = useState(project.name);
+  const url = `/api/organizations/${orgId}/projects/${project.id}`;
+  async function save() {
+    const v = name.trim();
+    if (!v) return setName(project.name);
+    if (v === project.name) return;
+    try {
+      onChange(await api(url, "PATCH", { name: v }));
+    } catch {
+      setName(project.name);
+    }
+  }
+  return (
+    <input
+      className="ptitle"
+      aria-label="Nom du projet"
+      size={Math.max(6, name.length)}
+      value={name}
+      onChange={(e) => setName(e.target.value)}
+      onBlur={save}
+      onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+    />
+  );
+}
+
+/** Ligne discrète sous le panneau de contrôle : statut, priorité, échéance, description, menu ⋯. */
+export default function ProjectHeader({ orgId, project, onChange, onDeleted }) {
+  const [err, setErr] = useState("");
+  const [desc, setDesc] = useState(project.description ?? "");
+  const [showDesc, setShowDesc] = useState(!!project.description);
+  const url = `/api/organizations/${orgId}/projects/${project.id}`;
+
+  async function save(changes) {
+    try {
+      onChange(await api(url, "PATCH", changes));
+      setErr("");
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  async function remove() {
+    if (!window.confirm(`Supprimer le projet « ${project.name} » et toutes ses tâches ?`)) return;
+    try {
+      await api(url, "DELETE");
+      onDeleted();
+    } catch (e) {
+      setErr(e.message);
+    }
+  }
+
+  return (
+    <>
+      <div className="pmeta-row">
+        <select aria-label="Statut du projet" value={project.status} onChange={(e) => save({ status: e.target.value })}>
+          {Object.entries(PROJECT_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select aria-label="Priorité du projet" value={project.priority} onChange={(e) => save({ priority: e.target.value })}>
+          {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>Priorité {l.toLowerCase()}</option>)}
+        </select>
+        <DateField label="Échéance du projet" value={project.dueDate} placeholder="Échéance" onChange={(dueDate) => save({ dueDate })} />
+        <Menu
+          label="Plus d'actions sur le projet"
+          trigger={<Icon name="more" />}
+          items={[
+            { label: showDesc ? "Masquer la description" : "Ajouter une description", icon: "list", onClick: () => setShowDesc(!showDesc) },
+            { label: "Supprimer le projet", icon: "trash", danger: true, onClick: remove },
+          ]}
+        />
+      </div>
+      {showDesc && (
+        <div className="pdesc">
+          <textarea
+            aria-label="Description"
+            placeholder="Description du projet…"
+            rows={1}
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onBlur={() => desc.trim() !== (project.description ?? "") && save({ description: desc })}
+          />
+        </div>
+      )}
+      {err && <p className="error">{err}</p>}
+    </>
+  );
+}
