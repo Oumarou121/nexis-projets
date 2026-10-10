@@ -19,7 +19,7 @@ export default function TaskSidebar({ task, members, onClose, onOpenDetail }) {
       <div className={`sidebar ${open ? "open" : ""}`}>
         <div className="sidebar-header">
           <h3>Détails de la tâche</h3>
-          <button className="sidebar-close" onClick={toggle}>×</button>
+          <button className="sidebar-close" aria-label="Fermer" onClick={onClose}>×</button>
         </div>
 
         <div className="sidebar-section">
@@ -74,7 +74,7 @@ export default function TaskSidebar({ task, members, onClose, onOpenDetail }) {
           </button>
         </div>
       </div>
-      <div className={`sidebar-overlay ${open ? "on" : ""}`} onClick={toggle}></div>
+      <div className={`sidebar-overlay ${open ? "on" : ""}`} onClick={onClose}></div>
     </>
   );
 }

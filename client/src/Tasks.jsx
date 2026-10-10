@@ -147,6 +147,8 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
   const shown = applySearch(labelFilter ? top.filter((t) => t.labels?.includes(labelFilter)) : top, search);
   const groups = groupTasks(shown, search.groupBy, members);
   const closeDetail = useCallback(() => setOpenId(null), []);
+  // Ouvrir la page détail ferme toujours l'aperçu rapide : jamais les deux en même temps.
+  const openDetail = useCallback((id) => { setSidebarTask(null); setOpenId(id); }, []);
   const openTask = list.find((t) => t.id === openId);
 
   function setView(v) {
@@ -210,7 +212,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
       <td>
         <div className="ttl">
           <PriorityStar priority={t.priority} onChange={(priority) => change(t, { priority })} />
-          <button className="link" onClick={() => setOpenId(t.id)}>
+          <button className="link" onClick={() => openDetail(t.id)}>
             <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
           </button>
           <LabelChips labels={t.labels} />
@@ -317,15 +319,15 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
       {err && <p className="error">{err}</p>}
 
       {view === "kanban" ? (
-        <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={move} onChange={change} onQuickAdd={quickAdd} onRemove={remove} onOpen={(task) => setOpenId(task.id)} onSidebar={(task) => setSidebarTask(task)} />
+        <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={move} onChange={change} onQuickAdd={quickAdd} onRemove={remove} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
-        <Gantt tasks={shown} dependencies={deps} members={members} onMove={move} onOpen={(task) => setOpenId(task.id)} onSidebar={(task) => setSidebarTask(task)} />
+        <Gantt tasks={shown} dependencies={deps} members={members} onMove={move} onChange={change} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "calendar" ? (
-        <Calendar tasks={shown} members={members} onOpen={(task) => setOpenId(task.id)} onSidebar={(task) => setSidebarTask(task)} />
+        <Calendar tasks={shown} members={members} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "reports" ? (
         <Reports tasks={shown} members={members} />
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap lt-wrap">
           <table className="lt">
             <thead>
               <tr><th>Tâche</th><th>Responsable</th><th>Échéance</th><th>Progression</th><th>Statut</th><th /></tr>
@@ -337,7 +339,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
                     <tr className={`gh ${closedGroups.has(g.key) ? "closed" : ""}`} onClick={() => setClosedGroups((c) => { const n = new Set(c); n.has(g.key) ? n.delete(g.key) : n.add(g.key); return n; })}>
                       <td colSpan={6}>
                         <div className="gh-in">
-                          <Icon name="chevron" size={14} />{g.label} <span className="muted">({g.items.length})</span>
+                          <Icon name="chevron" size={14} /><b>{g.label}</b> <span className="gcount">{g.items.length}</span>
                           <span className="tot">{g.items.filter(isLate).length > 0 && <span className="late">{g.items.filter(isLate).length} en retard · </span>}{avgProgress(g.items)} % terminé</span>
                         </div>
                       </td>
@@ -346,7 +348,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
                   {!closedGroups.has(g.key) && g.items.map(row)}
                 </Fragment>
               ))}
-              {shown.length === 0 && !err && <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 32 }}>Aucune tâche.</td></tr>}
+              {shown.length === 0 && !err && <tr className="empty-row"><td colSpan={6}><div className="empty-tab"><Icon name="list" size={22} /><b>Aucune tâche</b><span>Créez une tâche ou modifiez les filtres pour en voir ici.</span></div></td></tr>}
             </tbody>
             <tfoot>
               <tr>
@@ -401,7 +403,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
           </div>
         </div>
       )}
-      {sidebarTask && (
+      {sidebarTask && !openTask && (
         <TaskSidebar
           task={{ ...sidebarTask, subtaskStats: subStats.get(sidebarTask.id) }}
           members={members}

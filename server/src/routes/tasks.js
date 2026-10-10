@@ -16,7 +16,7 @@ import { recordStatus } from "../history.js";
 // Droits : lecture = projects.read ; créer / modifier / supprimer = projects.update.
 // Affecter quelqu'un exige en plus de pouvoir lister les membres dans NEXIS Identity.
 const STATUSES = ["todo", "in_progress", "review", "done"];
-const COLS = "id, project_id, title, description, status, priority, assignee_id, due_date, labels, parent_id, is_milestone, created_by, created_at, updated_at";
+const COLS = "id, project_id, title, description, status, priority, assignee_id, start_date, due_date, labels, parent_id, is_milestone, created_by, created_at, updated_at";
 
 const toApi = (r) => ({
   id: r.id,
@@ -26,6 +26,7 @@ const toApi = (r) => ({
   status: r.status,
   priority: r.priority,
   assigneeId: r.assignee_id,
+  startDate: r.start_date ?? null,
   dueDate: r.due_date,
   labels: r.labels ?? [],
   parentId: r.parent_id ?? null,
@@ -65,6 +66,11 @@ function parse(body, { partial }) {
     if (body.dueDate !== null && !DATE_RE.test(body.dueDate)) throw httpError(400, "Échéance invalide (AAAA-MM-JJ).");
     out.due_date = body.dueDate;
   }
+  if (has("startDate")) {
+    if (body.startDate !== null && !DATE_RE.test(body.startDate)) throw httpError(400, "Date de début invalide (AAAA-MM-JJ).");
+    out.start_date = body.startDate;
+  }
+  if (out.start_date && out.due_date && out.start_date > out.due_date) throw httpError(400, "La date de début doit précéder l'échéance.");
   if (has("labels")) {
     if (!Array.isArray(body.labels)) throw httpError(400, "Étiquettes invalides.");
     const seen = new Set();
@@ -171,6 +177,13 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Tâche introuvable.");
   const project = await assertProject(req.params);
   await assertAssignee(req, f.assignee_id);
+  if (f.start_date !== undefined || f.due_date !== undefined) {
+    // Une seule des deux dates change : on compare avec celle déjà enregistrée.
+    const cur = unwrap(await db.from("tasks").select("start_date, due_date").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle());
+    const start = f.start_date !== undefined ? f.start_date : cur?.start_date;
+    const due = f.due_date !== undefined ? f.due_date : cur?.due_date;
+    if (start && due && start > due) throw httpError(400, "La date de début doit précéder l'échéance.");
+  }
   const previous = f.status
     ? unwrap(await db.from("tasks").select("status").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
     : null;

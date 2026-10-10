@@ -12,10 +12,13 @@ const fromISO = (iso) => {
 /** Couleur d'une barre : en retard = rouge, sinon selon le statut. */
 function barColor(t) {
   if (isLate(t)) return "var(--bad)";
-  return { done: "#3fb08a", in_progress: "#4a9be8", review: "#e0a43a", todo: "#8d96a8" }[t.status] ?? "#8d96a8";
+  return { done: "#12a678", in_progress: "#5b7cf0", review: "#e0962a", todo: "#8a90ab" }[t.status] ?? "#8a90ab";
 }
 
 const ROW_H = 34;
+const COL_W = 34;
+const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const shortD = (d) => d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 
 /** Tracé d'une flèche : sort à droite de la barre bloquante, entre à gauche de la barre dépendante. */
 function arrowPath(a, b) {
@@ -31,15 +34,19 @@ function arrowPath(a, b) {
  * (une ligne par tâche, barre de la création à l'échéance) et une ligne de total par jour.
  * Les tâches sans échéance sont comptées sous le tableau.
  */
-export default function Gantt({ tasks, dependencies = [], members, onOpen, onSidebar }) {
+export default function Gantt({ tasks, dependencies = [], members, onChange, onOpen, onSidebar }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [closed, setClosed] = useState(() => new Set());
   const gridRef = useRef(null);
   const barRefs = useRef(new Map());
   const [arrows, setArrows] = useState([]);
   const [hover, setHover] = useState(null);
+  // Redimensionnement en cours : { id, edge: "l" | "r", delta } (en jours). Gardé jusqu'à la réponse du serveur.
+  const [drag, setDrag] = useState(null);
+  const dragRef = useRef(null);
+  const justDragged = useRef(false);
 
-  const { days, groups, totals, skipped } = useMemo(() => {
+  const { days, groups, totals, skipped, n: nDays } = useMemo(() => {
     const start = new Date(month.getFullYear(), month.getMonth(), 1);
     const n = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     const days = Array.from({ length: n }, (_, i) => new Date(start.getFullYear(), start.getMonth(), i + 1));
@@ -51,22 +58,22 @@ export default function Gantt({ tasks, dependencies = [], members, onOpen, onSid
     for (const t of tasks) {
       if (!t.dueDate) { skipped++; continue; }
       const due = idx(fromISO(t.dueDate));
-      const created = idx(new Date(t.createdAt));
-      const s = Math.min(created, due);
-      const e = Math.max(created, due);
+      // Début : date de début saisie, sinon création de la tâche (jamais après l'échéance).
+      const s = Math.min(t.startDate ? idx(fromISO(t.startDate)) : idx(new Date(t.createdAt)), due);
+      const e = due;
       if (e < 0 || s > n - 1) continue; // hors du mois affiché
       const from = Math.max(0, s);
       const to = Math.min(n - 1, e);
       for (let i = from; i <= to; i++) totals[i]++;
       const key = t.assigneeId ?? "none";
-      byWho.set(key, [...(byWho.get(key) ?? []), { task: t, from, to, cutL: s < 0, cutR: e > n - 1 }]);
+      byWho.set(key, [...(byWho.get(key) ?? []), { task: t, s, e, from, to, cutL: s < 0, cutR: e > n - 1 }]);
     }
     const groups = [...byWho].map(([key, rows]) => {
       const m = members.find((x) => x.userId === key);
       return { key, name: key === "none" ? "Non assignée" : m ? memberName(m) : "Ancien membre", member: m, rows };
     });
     groups.sort((a, b) => (a.key === "none") - (b.key === "none") || a.name.localeCompare(b.name, "fr"));
-    return { days, groups, totals, skipped };
+    return { days, groups, totals, skipped, n };
   }, [tasks, members, month]);
 
   // Position des barres mesurée dans le DOM : les lignes ont des hauteurs variables, on ne la calcule pas.
@@ -101,14 +108,48 @@ export default function Gantt({ tasks, dependencies = [], members, onOpen, onSid
     const ro = new ResizeObserver(measure);
     ro.observe(grid);
     return () => ro.disconnect();
-  }, [measure, groups, closed, month]);
+  }, [measure, groups, closed, month, drag]);
+
+  function startResize(e, row, edge) {
+    if (!onChange || e.button > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { id: row.task.id, edge, x0: e.clientX, s: row.s, e: row.e, delta: 0, task: row.task };
+    setDrag({ id: row.task.id, edge, delta: 0 });
+  }
+  function moveResize(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    let delta = Math.round((e.clientX - d.x0) / COL_W);
+    // Une tâche dure au moins un jour : le bord glissé ne dépasse pas l'autre.
+    delta = d.edge === "l" ? Math.min(delta, d.e - d.s) : Math.max(delta, d.s - d.e);
+    if (delta !== d.delta) {
+      d.delta = delta;
+      setDrag({ id: d.id, edge: d.edge, delta });
+    }
+  }
+  async function endResize(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    if (d.delta === 0) { setDrag(null); return; }
+    justDragged.current = true;
+    setTimeout(() => { justDragged.current = false; }, 0);
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    const at = (i) => isoOf(new Date(first.getFullYear(), first.getMonth(), 1 + i));
+    await onChange(d.task, d.edge === "l" ? { startDate: at(d.s + d.delta) } : { dueDate: at(d.e + d.delta) });
+    setDrag(null);
+  }
+  const cancelResize = () => { dragRef.current = null; setDrag(null); };
 
   const todayIdx = (() => {
     const t = midnight(new Date());
     return t.getFullYear() === month.getFullYear() && t.getMonth() === month.getMonth() ? t.getDate() - 1 : -1;
   })();
   const shift = (n) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
-  const cols = `repeat(${days.length}, 34px)`;
+  const cols = `repeat(${days.length}, ${COL_W}px)`;
   const toggle = (k) => setClosed((c) => { const x = new Set(c); x.has(k) ? x.delete(k) : x.add(k); return x; });
   const weekend = (d) => d.getDay() === 0 || d.getDay() === 6;
   const label = month.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
@@ -118,8 +159,13 @@ export default function Gantt({ tasks, dependencies = [], members, onOpen, onSid
       <div className="plan-nav">
         <button type="button" className="icon-btn" aria-label="Mois précédent" onClick={() => shift(-1)}><Icon name="back" size={18} /></button>
         <button type="button" className="icon-btn" aria-label="Mois suivant" onClick={() => shift(1)}><Icon name="chevronR" size={18} /></button>
-        <button type="button" className="btn" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>Aujourd'hui</button>
+        <button type="button" className="pl-today" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>Aujourd'hui</button>
         <strong className="plan-month">{label}</strong>
+        <ul className="plan-legend" aria-label="Légende">
+          {[["todo", "#8a90ab"], ["in_progress", "#5b7cf0"], ["review", "#e0962a"], ["done", "#12a678"], ["late", "var(--bad)"]].map(([k, c]) => (
+            <li key={k}><i style={{ background: c }} />{k === "late" ? "En retard" : TASK_STATUS[k]}</li>
+          ))}
+        </ul>
       </div>
       <div className="plan" role="table" aria-label={`Planning ${label}`}>
         <div className="plan-grid" ref={gridRef}>
@@ -138,29 +184,51 @@ export default function Gantt({ tasks, dependencies = [], members, onOpen, onSid
                 <div className="pl-name"><Icon name="chevron" size={14} /><Avatar member={g.member} name={g.member ? undefined : ""} size={20} />{g.name}<span className="muted"> ({g.rows.length})</span></div>
                 {days.map((d, i) => <div key={i} className={`pl-cell ${weekend(d) ? "we" : ""}`} />)}
               </button>
-              {!closed.has(g.key) && g.rows.map(({ task, from, to, cutL, cutR }) => (
-                <div key={task.id} className="pl-row" style={{ gridTemplateColumns: `200px ${cols}` }}>
-                  <div className="pl-name pl-task" title={task.title}>
-                    <button type="button" className="link" onClick={() => onOpen(task)}><span className={task.status === "done" ? "done" : ""}>{task.title}</span></button>
+              {!closed.has(g.key) && g.rows.map((row) => {
+                const { task } = row;
+                const d = drag?.id === task.id ? drag : null;
+                const s = row.s + (d?.edge === "l" ? d.delta : 0);
+                const e = row.e + (d?.edge === "r" ? d.delta : 0);
+                const from = Math.max(0, s);
+                const to = Math.min(nDays - 1, e);
+                const cutL = s < 0;
+                const cutR = e > nDays - 1;
+                const first = new Date(month.getFullYear(), month.getMonth(), 1);
+                const dateOf = (i) => new Date(first.getFullYear(), first.getMonth(), 1 + i);
+                const range = `${shortD(dateOf(s))} → ${shortD(dateOf(e))}`;
+                if (from > to) return null;
+                return (
+                  <div key={task.id} className="pl-row" style={{ gridTemplateColumns: `200px ${cols}` }}>
+                    <div className="pl-name pl-task" title={task.title}>
+                      <button type="button" className="link" onClick={() => onOpen(task)}><span className={task.status === "done" ? "done" : ""}>{task.title}</span></button>
+                    </div>
+                    {days.map((dd, i) => <div key={i} className={`pl-cell ${weekend(dd) ? "we" : ""} ${i === todayIdx ? "today" : ""}`} style={{ gridRow: 1, gridColumn: i + 2 }} />)}
+                    <div
+                      ref={(el) => { if (el) barRefs.current.set(task.id, el); else barRefs.current.delete(task.id); }}
+                      className={`pl-bar ${cutL ? "cl" : ""} ${cutR ? "cr" : ""} ${d ? "dragging" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onMouseEnter={() => setHover(task.id)}
+                      onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover(task.id)}
+                      onBlur={() => setHover(null)}
+                      style={{ gridRow: 1, gridColumn: `${from + 2} / ${to + 3}`, background: barColor(task) }}
+                      title={`${task.title} · ${TASK_STATUS[task.status]} · ${range}`}
+                      onClick={() => { if (!justDragged.current) onOpen(task); }}
+                      onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onOpen(task); } }}
+                      onContextMenu={(ev) => { if (onSidebar) { ev.preventDefault(); onSidebar(task); } }}
+                    >
+                      {onChange && !cutL && (
+                        <span className="pl-h l" aria-label={`Début de ${task.title}`} onPointerDown={(ev) => startResize(ev, row, "l")} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={cancelResize} onClick={(ev) => ev.stopPropagation()} />
+                      )}
+                      <span className="pl-bt">{d ? range : task.title}</span>
+                      {onChange && !cutR && (
+                        <span className="pl-h r" aria-label={`Échéance de ${task.title}`} onPointerDown={(ev) => startResize(ev, row, "r")} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={cancelResize} onClick={(ev) => ev.stopPropagation()} />
+                      )}
+                    </div>
                   </div>
-                  {days.map((d, i) => <div key={i} className={`pl-cell ${weekend(d) ? "we" : ""} ${i === todayIdx ? "today" : ""}`} style={{ gridRow: 1, gridColumn: i + 2 }} />)}
-                  <button
-                    type="button"
-                    ref={(el) => { if (el) barRefs.current.set(task.id, el); else barRefs.current.delete(task.id); }}
-                    className={`pl-bar ${cutL ? "cl" : ""} ${cutR ? "cr" : ""}`}
-                    onMouseEnter={() => setHover(task.id)}
-                    onMouseLeave={() => setHover(null)}
-                    onFocus={() => setHover(task.id)}
-                    onBlur={() => setHover(null)}
-                    style={{ gridRow: 1, gridColumn: `${from + 2} / ${to + 3}`, background: barColor(task) }}
-                    title={`${task.title} · ${TASK_STATUS[task.status]}${task.dueDate ? ` · échéance ${task.dueDate}` : ""}`}
-                    onClick={() => onOpen(task)}
-                    onContextMenu={(e) => { if (onSidebar) { e.preventDefault(); onSidebar(task); } }}
-                  >
-                    {task.title}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))}
           {arrows.length > 0 && (

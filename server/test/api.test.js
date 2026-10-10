@@ -208,6 +208,9 @@ describe("validation des tâches", () => {
     assert.equal((await post({ title: "Tâche", status: "fini" })).status, 400);
     assert.equal((await post({ title: "Tâche", priority: "critique" })).status, 400);
     assert.equal((await post({ title: "Tâche", dueDate: "31/12/2026" })).status, 400);
+    assert.equal((await post({ title: "Tâche", startDate: "demain" })).status, 400);
+    assert.equal((await post({ title: "Tâche", startDate: "2026-10-20", dueDate: "2026-10-10" })).status, 400);
+    assert.equal((await patch({ startDate: "31/12/2026" })).status, 400);
     assert.equal((await post({ title: "Tâche", assigneeId: "quelqu-un" })).status, 400);
     assert.equal((await post({ title: "Tâche", description: "x".repeat(4001) })).status, 400);
   });
