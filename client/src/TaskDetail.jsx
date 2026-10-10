@@ -128,15 +128,21 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     if (!msg) setSubTitle("");
   }
 
-  async function onPickFiles(e) {
-    const picked = [...e.target.files];
-    e.target.value = ""; // permet de rechoisir le même fichier
-    if (picked.length === 0) return;
-    setUploading(true);
-    let next = files ?? [];
+  const MAX_FILES = 10;
+
+  async function uploadFiles(picked) {
+    if (picked.length === 0 || uploading || !files) return;
+    let next = files;
     let msg = "";
+    const room = MAX_FILES - next.length;
+    if (room <= 0) { setErr("Limite atteinte : 10 fichiers par tâche."); return; }
+    if (picked.length > room) {
+      msg = `Seuls ${room} fichier${room > 1 ? "s ont" : " a"} été envoyé${room > 1 ? "s" : ""} : limite de 10 par tâche.`;
+      picked = picked.slice(0, room);
+    }
+    setUploading(true);
     for (const f of picked) {
-      if (f.size === 0) { msg = `« ${f.name} » est vide.`; continue; }
+      if (f.size === 0) { msg = `« ${f.name} » est vide (les dossiers ne sont pas acceptés).`; continue; }
       if (f.size > MAX_FILE_BYTES) { msg = `« ${f.name} » dépasse 10 Mo.`; continue; }
       try {
         next = [...next, await upload(filesBase, f)];
@@ -150,6 +156,28 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     setErr(msg);
     setUploading(false);
   }
+
+  async function onPickFiles(e) {
+    const picked = [...e.target.files];
+    e.target.value = ""; // permet de rechoisir le même fichier
+    await uploadFiles(picked);
+  }
+
+  // Glisser-déposer : un compteur évite le clignotement quand le curseur passe sur les éléments enfants.
+  const [dragDepth, setDragDepth] = useState(0);
+  const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+  const dnd = {
+    onDragEnter: (e) => { if (hasFiles(e)) { e.preventDefault(); setDragDepth((d) => d + 1); } },
+    onDragOver: (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } },
+    onDragLeave: (e) => { if (hasFiles(e)) setDragDepth((d) => Math.max(0, d - 1)); },
+    onDrop: (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragDepth(0);
+      uploadFiles([...e.dataTransfer.files]);
+    },
+  };
+  const dragging = dragDepth > 0;
 
   async function openFile(f) {
     try {
@@ -411,7 +439,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             <Timesheets orgId={orgId} projectId={projectId} taskId={task.id} members={members} />
           </div>
 
-          <div className={`tab-content ${tab === "attachments" ? "on" : ""}`}>
+          <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...dnd}>
             {files && files.length > 0 && (
               <ul className="fl">
                 {files.map((f) => {
@@ -433,15 +461,19 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             )}
             {files && files.length === 0 && <div className="empty-tab"><Icon name="clip" size={22} /><b>Aucune pièce jointe</b><span>Ajoutez des documents, images ou maquettes.</span></div>}
             {!files && !err && <RowsSkeleton rows={2} h={64} label="Chargement des pièces jointes" />}
-            {(files?.length ?? 0) < 10 ? (
-              <label className={`drop ${uploading ? "busy" : ""}`}>
+            {(files?.length ?? 0) < MAX_FILES ? (
+              <label className={`drop ${uploading ? "busy" : ""} ${dragging ? "over" : ""}`}>
                 <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
                 <Icon name="clip" size={18} />
-                <span><b>{uploading ? "Envoi en cours…" : "Ajouter des fichiers"}</b><small>Cliquez pour choisir · 10 Mo maximum par fichier</small></span>
+                <span>
+                  <b>{uploading ? "Envoi en cours…" : dragging ? "Déposez pour envoyer" : "Glissez vos fichiers ici"}</b>
+                  <small>{uploading ? "Veuillez patienter" : "ou cliquez pour choisir · 10 Mo maximum par fichier"}</small>
+                </span>
               </label>
             ) : (
               <p className="muted small">Limite atteinte : 10 fichiers par tâche.</p>
             )}
+            {err && tab === "attachments" && <p className="error" role="alert" style={{ padding: 0, margin: "8px 0 0" }}>{err}</p>}
             {files && files.length > 0 && <p className="fcount">{files.length} / 10 fichiers</p>}
           </div>
 

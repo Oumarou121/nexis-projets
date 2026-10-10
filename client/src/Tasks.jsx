@@ -41,6 +41,12 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   const [labelFilter, setLabelFilter] = useState("");
   const [search, setSearch] = useState({ q: "", filters: [], groupBy: "" });
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    if (!creating) return;
+    const onKey = (e) => e.key === "Escape" && setCreating(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [creating]);
   const [showSettings, setShowSettings] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
   const [sidebarTask, setSidebarTask] = useState(null);
@@ -367,24 +373,61 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         </div>
       )}
       {creating && (
-        <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && setCreating(false)}>
-          <form className="dlg" onSubmit={onCreate} role="dialog" aria-label="Nouvelle tâche">
-            <header>Nouvelle tâche <button type="button" className="x" aria-label="Fermer" onClick={() => setCreating(false)}><Icon name="close" /></button></header>
-            <div>
-              <input className="nm" autoFocus placeholder="Titre de la tâche" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-              <div className="fg">
-                {canAssign && <div><label>Responsable</label>{assigneeSelect(form.assigneeId, (e) => setForm({ ...form, assigneeId: e.target.value }), "Assigner à")}</div>}
-                <div><label>Priorité</label>
-                  <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
-                    {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
-                </div>
-                <div><label>Échéance</label><input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} /></div>
-                <div><label>Étiquettes</label><input placeholder="séparées par des virgules" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} /></div>
+        <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && setCreating(false)}>
+          <form className="pj-md" onSubmit={onCreate} role="dialog" aria-modal="true" aria-labelledby="nt-t">
+            <div className="pj-mh">
+              <div>
+                <h2 id="nt-t">Nouvelle tâche</h2>
+                <p>Seul le titre est obligatoire. Le reste se règle plus tard.</p>
               </div>
-              <div className="fld"><label>Description</label><textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+              <button type="button" className="pj-x" aria-label="Fermer" onClick={() => setCreating(false)}><Icon name="close" size={18} /></button>
             </div>
-            <footer><button disabled={!form.title.trim()}>Ajouter</button><button type="button" className="ghost" onClick={() => setCreating(false)}>Annuler</button></footer>
+            <div className="pj-mb">
+              <div className="pj-f">
+                <label htmlFor="nt-title">Titre de la tâche</label>
+                <input id="nt-title" type="text" autoFocus placeholder="Ex. : Préparer la maquette" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+              </div>
+              <fieldset className="pj-f">
+                <legend>Priorité</legend>
+                <div className="pj-pr">
+                  {Object.entries(PRIORITY).map(([v, l]) => (
+                    <label key={v} className="pj-rb">
+                      <input type="radio" name="nt-prio" value={v} checked={form.priority === v} onChange={() => setForm({ ...form, priority: v })} />
+                      <span>{l}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div className="pj-g2">
+                {canAssign && (
+                  <div className="pj-f">
+                    <label htmlFor="nt-who">Responsable <span>(facultatif)</span></label>
+                    <select id="nt-who" value={form.assigneeId ?? ""} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}>
+                      <option value="">Non assignée</option>
+                      {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div className="pj-f">
+                  <label htmlFor="nt-due">Échéance <span>(facultatif)</span></label>
+                  <input id="nt-due" type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })} />
+                </div>
+              </div>
+              <div className="pj-f">
+                <label htmlFor="nt-labels">Étiquettes <span>(facultatif)</span></label>
+                <input id="nt-labels" type="text" placeholder="Séparées par des virgules" value={form.labels} onChange={(e) => setForm({ ...form, labels: e.target.value })} />
+              </div>
+              <div className="pj-f">
+                <label htmlFor="nt-desc">Description <span>(facultatif)</span></label>
+                <textarea id="nt-desc" rows={3} placeholder="Que faut-il faire, et pour quand ?" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </div>
+              {err && <p className="error" role="alert" style={{ padding: 0, margin: 0 }}>{err}</p>}
+            </div>
+            <div className="pj-mf">
+              <small>Vous pourrez ajouter des sous-tâches et des fichiers depuis la fiche.</small>
+              <button type="button" className="pj-ghost" onClick={() => setCreating(false)}>Annuler</button>
+              <button className="pj-ok" disabled={!form.title.trim()}>Ajouter la tâche</button>
+            </div>
           </form>
         </div>
       )}

@@ -13,9 +13,9 @@ const DEFAULT_SETTINGS = {
 };
 
 const VISIBILITY = [
-  ["private", "Utilisateurs internes invités (privé)"],
-  ["internal", "Tous les utilisateurs internes"],
-  ["public", "Utilisateurs portail invités et tous les utilisateurs internes (public)"],
+  ["private", "Privé", "Utilisateurs internes invités"],
+  ["internal", "Interne", "Tous les utilisateurs internes"],
+  ["public", "Public", "Utilisateurs portail invités et tous les utilisateurs internes"],
 ];
 
 const OPTIONS = {
@@ -68,53 +68,58 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
     }
   }
 
+  const colorIdx = Number.isInteger(project.color) ? project.color : Number(projectColor(project.name).match(/\d/)[0]);
   return (
-    <div className="dlg wide" role="dialog" aria-label={`Paramètres du projet ${project.name}`}>
+    <div className="dlg wide set-dlg" role="dialog" aria-label={`Paramètres du projet ${project.name}`}>
       <header>
-        <span>Paramètres · {project.name}</span>
-        {onClose && <button type="button" className="x" aria-label="Fermer" onClick={onClose}><Icon name="close" /></button>}
+        <span className="set-title">
+          <i className="set-dot" style={{ background: `var(--pj-${colorIdx})` }} aria-hidden="true" />
+          <span><small>Paramètres du projet</small><strong>{project.name}</strong></span>
+        </span>
+        {onClose && <button type="button" className="icon-btn" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>}
       </header>
       <div className="set-body">
-        <div className="tabs" role="tablist" style={{ marginTop: 0, borderBottom: "1px solid var(--bd)", display: "flex" }}>
-          <button role="tab" aria-selected={tab === "settings"} className={`tab ${tab === "settings" ? "on" : ""}`} onClick={() => setTab("settings")}>Paramètres</button>
-          <button role="tab" aria-selected={tab === "description"} className={`tab ${tab === "description" ? "on" : ""}`} onClick={() => setTab("description")}>Description</button>
+        <div className="set-tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>Paramètres</button>
+          <button role="tab" aria-selected={tab === "description"} className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
         </div>
 
         {tab === "description" ? (
-          project.description ? <p className="panel-desc" style={{ marginTop: 16 }}>{project.description}</p> : <p className="muted" style={{ marginTop: 16 }}>Aucune description. Vous pouvez l'ajouter depuis le menu « ⋯ » du projet.</p>
+          project.description
+            ? <p className="panel-desc set-box">{project.description}</p>
+            : <div className="set-empty"><strong>Aucune description</strong><span>Vous pouvez l'ajouter depuis le menu « ⋯ » du projet.</span></div>
         ) : (
           <>
             {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
-            <h5 className="set-h">Couleur du projet</h5>
-            <ColorPicker
-              name="set-color"
-              disabled={saving}
-              value={Number.isInteger(project.color) ? project.color : Number(projectColor(project.name).match(/\d/)[0])}
-              onChange={saveColor}
-            />
-            <h5 className="set-h">Visibilité</h5>
-            <div className="set-radios" role="radiogroup" aria-label="Visibilité">
-              {VISIBILITY.map(([v, label]) => (
-                <label key={v}>
-                  <input type="radio" name="visibility" value={v} checked={settings.visibility === v} disabled={saving} onChange={() => saveSetting("visibility", v)} />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
+            <section className="set-box">
+              <h5 className="set-h">Couleur du projet</h5>
+              <ColorPicker name="set-color" disabled={saving} value={colorIdx} onChange={saveColor} />
+            </section>
+            <section className="set-box">
+              <h5 className="set-h">Visibilité</h5>
+              <div className="set-cards" role="radiogroup" aria-label="Visibilité">
+                {VISIBILITY.map(([v, label, hint]) => (
+                  <label key={v} className="set-card">
+                    <input type="radio" name="visibility" value={v} checked={settings.visibility === v} disabled={saving} onChange={() => saveSetting("visibility", v)} />
+                    <span><b>{label}</b><small>{hint}</small></span>
+                  </label>
+                ))}
+              </div>
+            </section>
             <div className="set-cols">
               {Object.entries(OPTIONS).map(([title, items]) => (
-                <section key={title}>
+                <section key={title} className="set-box">
                   <h5 className="set-h">{title}</h5>
                   {items.map(([key, label, hint]) => (
                     <label key={key} className="set-opt">
-                      <input type="checkbox" checked={!!settings[key]} disabled={saving} onChange={() => saveSetting(key, !settings[key])} />
                       <span><b>{label}</b><small>{hint}</small></span>
+                      <input type="checkbox" role="switch" checked={!!settings[key]} disabled={saving} onChange={() => saveSetting(key, !settings[key])} />
                     </label>
                   ))}
                 </section>
               ))}
             </div>
-            <p className="muted small" aria-live="polite" style={{ minHeight: 18, margin: "12px 0 0" }}>{saving ? "Enregistrement…" : ""}</p>
+            <p className="muted small" aria-live="polite" style={{ minHeight: 18, margin: "12px 0 0" }}>{saving ? "Enregistrement…" : "Les changements sont enregistrés automatiquement."}</p>
           </>
         )}
       </div>

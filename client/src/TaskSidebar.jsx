@@ -1,79 +1,69 @@
-import { useState } from "react";
-import { Avatar } from "./ui.jsx";
+import { useEffect, useState } from "react";
+import { Avatar, Icon } from "./ui.jsx";
 import { PRIORITY, STATUS_COLOR, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
 
 export default function TaskSidebar({ task, members, onClose, onOpenDetail }) {
-  const [open, setOpen] = useState(true);
+  const [open] = useState(true);
 
-  function toggle() {
-    setOpen(!open);
-  }
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const nameOf = (id) => {
     const m = members.find((x) => x.userId === id);
-    return m ? memberName(m) : "Non assigné";
+    return m ? memberName(m) : "Ancien membre";
   };
+  const late = isLate(task);
+  const sub = task.subtaskStats;
+  const pct = sub && sub.total ? Math.round((sub.done / sub.total) * 100) : 0;
 
   return (
     <>
-      <div className={`sidebar ${open ? "open" : ""}`}>
+      <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Aperçu de la tâche">
         <div className="sidebar-header">
-          <h3>Détails de la tâche</h3>
-          <button className="sidebar-close" aria-label="Fermer" onClick={onClose}>×</button>
+          <span className="sb-kicker">Aperçu rapide</span>
+          <button className="icon-btn sidebar-close" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>
         </div>
 
-        <div className="sidebar-section">
-          <h4>Informations</h4>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Titre</span>
-            <span className="sidebar-item-value">{task.title}</span>
-          </div>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Statut</span>
-            <span className="sidebar-item-value"><i className="dot" style={{ background: STATUS_COLOR[task.status], marginRight: 6 }} />{TASK_STATUS[task.status]}</span>
-          </div>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Priorité</span>
-            <span className={`sidebar-item-value p-${task.priority}`}>{PRIORITY[task.priority]}</span>
-          </div>
+        <h3 className="sb-title">{task.title}</h3>
+        <div className="sb-pills">
+          <span className="sb-pill"><i className="dot" style={{ background: STATUS_COLOR[task.status] }} />{TASK_STATUS[task.status]}</span>
+          <span className={`sb-pill p-${task.priority}`}><Icon name="flag" size={13} />{PRIORITY[task.priority]}</span>
+        </div>
+
+        <div className="sb-card">
           <div className="sidebar-item">
             <span className="sidebar-item-label">Échéance</span>
-            <span className={`sidebar-item-value ${isLate(task) ? "late" : ""}`}>
-              {task.dueDate ? `${shortDate(task.dueDate)}${isLate(task) ? " · en retard" : ""}` : "—"}
+            <span className={`sidebar-item-value ${late ? "late" : ""}`}>
+              {task.dueDate ? `${shortDate(task.dueDate)}${late ? " · en retard" : ""}` : "—"}
             </span>
           </div>
           <div className="sidebar-item">
             <span className="sidebar-item-label">Responsable</span>
-            <span className="sidebar-item-value">{task.assigneeId ? <span className="ass"><Avatar name={nameOf(task.assigneeId)} size={22} />{nameOf(task.assigneeId)}</span> : "Non assignée"}</span>
+            <span className="sidebar-item-value">
+              {task.assigneeId ? <span className="ass"><Avatar name={nameOf(task.assigneeId)} size={24} />{nameOf(task.assigneeId)}</span> : <span className="muted">Non assignée</span>}
+            </span>
           </div>
         </div>
 
-        <div className="sidebar-section">
-          <h4>Activité</h4>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Commentaires</span>
-            <span className="sidebar-item-value">{task.commentCount || 0}</span>
-          </div>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Pièces jointes</span>
-            <span className="sidebar-item-value">{task.attachmentCount || 0}</span>
-          </div>
-          <div className="sidebar-item">
-            <span className="sidebar-item-label">Sous-tâches</span>
-            <span className="sidebar-item-value">{task.subtaskStats ? `${task.subtaskStats.done}/${task.subtaskStats.total}` : "—"}</span>
-          </div>
+        <div className="sb-stats">
+          <div title="Commentaires"><Icon name="comment" size={16} /><b>{task.commentCount || 0}</b><span>Commentaires</span></div>
+          <div title="Pièces jointes"><Icon name="clip" size={16} /><b>{task.attachmentCount || 0}</b><span>Fichiers</span></div>
+          <div title="Sous-tâches"><Icon name="subtask" size={16} /><b>{sub ? `${sub.done}/${sub.total}` : "—"}</b><span>Sous-tâches</span></div>
         </div>
+        {sub && sub.total > 0 && (
+          <div className="sb-prog" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Sous-tâches terminées">
+            <i style={{ width: `${pct}%` }} />
+          </div>
+        )}
 
-        <div className="sidebar-section">
-          <h4>Actions rapides</h4>
-          <button style={{ width: "100%", marginBottom: "8px" }} onClick={() => onOpenDetail(task.id)}>
-            Ouvrir en détail
-          </button>
-          <button className="ghost" style={{ width: "100%" }} onClick={onClose}>
-            Fermer
-          </button>
+        <div className="sb-actions">
+          <button className="pj-ok" onClick={() => onOpenDetail(task.id)}>Ouvrir en détail</button>
+          <button className="pj-ghost ghost" onClick={onClose}>Fermer</button>
         </div>
-      </div>
+      </aside>
       <div className={`sidebar-overlay ${open ? "on" : ""}`} onClick={onClose}></div>
     </>
   );

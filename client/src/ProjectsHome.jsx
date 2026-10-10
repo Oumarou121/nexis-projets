@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { ProjectBentoSkeleton, ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
+import { ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
 import { ColorPicker, Icon } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS, memberName, projectColor, todayISO } from "./labels.js";
 
@@ -345,21 +345,9 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
   const shown = needle ? list.filter((p) => p.name.toLowerCase().includes(needle)) : list;
 
   const stats = useMemo(() => {
-    const month = todayISO().slice(0, 7);
-    const load = {};
-    let late = 0;
-    let milestones = 0;
-    for (const p of list) {
-      late += p.lateCount ?? 0;
-      milestones += (p.milestoneDates ?? []).filter((d) => d.startsWith(month)).length;
-      for (const [id, n] of Object.entries(p.openByAssignee ?? {})) load[id] = (load[id] ?? 0) + n;
-    }
-    const byMember = Object.entries(load).sort((a, b) => b[1] - a[1]).slice(0, 4)
-      .map(([id, n]) => { const m = members.find((x) => x.userId === id); return { id, n, name: m ? memberName(m) : "Membre" }; });
-    return { active: list.filter((p) => p.status === "active").length, late, milestones, byMember };
-  }, [list, members]);
-
-  const maxLoad = Math.max(1, ...stats.byMember.map((m) => m.n));
+    const late = list.reduce((n, p) => n + (p.lateCount ?? 0), 0);
+    return { active: list.filter((p) => p.status === "active").length, late };
+  }, [list]);
 
   return (
     <div className="pj-wrap">
@@ -399,25 +387,6 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
           <b>{list.length ? "Aucun résultat" : "Aucun projet pour l'instant"}</b>
           {list.length ? "Essayez un autre mot-clé." : "Cliquez sur « Nouveau projet » pour créer le premier."}
         </div>
-      )}
-
-      {busy && <ProjectBentoSkeleton />}
-      {!busy && list.length > 0 && (
-        <section className="pj-bento fade-in" aria-label="Résumé">
-          <div className="pj-t k"><b>{stats.late}</b><span>{stats.late > 1 ? "tâches en retard" : "tâche en retard"}</span></div>
-          <div className="pj-t c"><b>{stats.milestones}</b><span>{stats.milestones > 1 ? "jalons ce mois-ci" : "jalon ce mois-ci"}</span></div>
-          <div className="pj-t w">
-            <h2>Tâches ouvertes par membre</h2>
-            {stats.byMember.length === 0 && <span className="pj-none">Aucune tâche assignée pour l'instant.</span>}
-            {stats.byMember.map((m) => (
-              <div className="pj-ld2" key={m.id}>
-                <span className="pj-av" title={m.name}>{initials(m.name)}</span>
-                <i style={{ width: `${(m.n / maxLoad) * 100}%` }} />
-                <span>{m.n}</span>
-              </div>
-            ))}
-          </div>
-        </section>
       )}
 
       {creating && <NewProjectDialog base={base} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); load(); }} />}
