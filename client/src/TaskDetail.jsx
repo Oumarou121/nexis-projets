@@ -20,6 +20,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
   const [labelText, setLabelText] = useState("");
+  const [addingLabel, setAddingLabel] = useState(false);
   const [subTitle, setSubTitle] = useState("");
   const [comments, setComments] = useState(null);
   const [files, setFiles] = useState(null);
@@ -92,7 +93,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     e.preventDefault();
     const incoming = labelText.split(",").map((x) => x.trim()).filter(Boolean);
     if (incoming.length === 0) return;
-    if (await saveLabels([...(task.labels ?? []), ...incoming])) setLabelText("");
+    const fresh = incoming.filter((x) => !(task.labels ?? []).some((l) => l.toLowerCase() === x.toLowerCase()));
+    if (fresh.length === 0 || (await saveLabels([...(task.labels ?? []), ...fresh]))) { setLabelText(""); setAddingLabel(false); }
   }
 
   async function addSub(e) {
@@ -283,9 +285,21 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 <label>Étiquettes</label>
                 <div className="fv wrap">
                   <LabelChips labels={task.labels} onRemove={(l) => saveLabels((task.labels ?? []).filter((x) => x !== l))} />
-                  <form onSubmit={addLabel} className="inline-add">
-                    <input aria-label="Ajouter des étiquettes" placeholder="Ajouter…" value={labelText} onChange={(e) => setLabelText(e.target.value)} />
-                  </form>
+                  {addingLabel ? (
+                    <form onSubmit={addLabel} className="lb-form">
+                      <input
+                        autoFocus
+                        aria-label="Ajouter des étiquettes"
+                        placeholder="Nom, puis Entrée"
+                        value={labelText}
+                        onChange={(e) => setLabelText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setLabelText(""); setAddingLabel(false); } }}
+                        onBlur={() => { if (!labelText.trim()) setAddingLabel(false); }}
+                      />
+                    </form>
+                  ) : (
+                    <button type="button" className="lb-add" onClick={() => setAddingLabel(true)}><Icon name="plus" size={13} />Ajouter</button>
+                  )}
                 </div>
               </div>
               {task.createdBy && (
@@ -338,25 +352,31 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           </div>
 
           <div className={`tab-content ${tab === "subtasks" ? "on" : ""}`}>
-            <ul className="list">
-              {subtasks.map((s) => (
-                <li key={s.id} className="row between">
-                  <label className="row">
-                    <input
-                      type="checkbox"
-                      checked={s.status === "done"}
-                      onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")}
-                    />
-                    <span className={s.status === "done" ? "done" : ""}>{s.title}</span>
-                  </label>
-                  <button className="link small" onClick={() => onRemoveSub(s)}>Supprimer</button>
-                </li>
-              ))}
-              {subtasks.length === 0 && <li className="muted small">Aucune sous-tâche.</li>}
-            </ul>
-            <form onSubmit={addSub} className="row">
-              <input aria-label="Nouvelle sous-tâche" placeholder="Nouvelle sous-tâche" value={subTitle} onChange={(e) => setSubTitle(e.target.value)} />
-              <button disabled={!subTitle.trim()}>Ajouter</button>
+            {subtasks.length > 0 && (
+              <div className="sbp">
+                <span>{subtasks.filter((x) => x.status === "done").length} sur {subtasks.length} terminée{subtasks.length > 1 ? "s" : ""}</span>
+                <div className="pbar" role="progressbar" aria-valuemin={0} aria-valuemax={subtasks.length} aria-valuenow={subtasks.filter((x) => x.status === "done").length}><i style={{ width: `${Math.round((subtasks.filter((x) => x.status === "done").length / subtasks.length) * 100)}%` }} /></div>
+              </div>
+            )}
+            {subtasks.length > 0 ? (
+              <ul className="ck">
+                {subtasks.map((s) => (
+                  <li key={s.id}>
+                    <label>
+                      <input type="checkbox" checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
+                      <span className="bx"><Icon name="check" size={14} /></span>
+                      <span className={s.status === "done" ? "done" : ""}>{s.title}</span>
+                    </label>
+                    <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="empty-tab"><Icon name="subtask" size={22} /><b>Aucune sous-tâche</b><span>Découpez cette tâche en petites étapes à cocher.</span></div>
+            )}
+            <form onSubmit={addSub} className="addrow">
+              <input aria-label="Nouvelle sous-tâche" placeholder="Ajouter une sous-tâche…" value={subTitle} onChange={(e) => setSubTitle(e.target.value)} />
+              <button className="go" disabled={!subTitle.trim()}>Ajouter</button>
             </form>
           </div>
 
@@ -369,24 +389,37 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           </div>
 
           <div className={`tab-content ${tab === "attachments" ? "on" : ""}`}>
-            <ul className="list">
-              {(files ?? []).map((f) => (
-                <li key={f.id} className="row between">
-                  <button className="link" onClick={() => openFile(f)}>📎 {f.fileName}</button>
-                  <span className="muted small">
-                    {fileSize(f.size)}{canAssign ? ` · ${nameOf(f.uploadedBy)}` : ""}{" "}
-                    {f.canDelete && <button className="link small" onClick={() => removeFile(f)}>Supprimer</button>}
-                  </span>
-                </li>
-              ))}
-              {files && files.length === 0 && <li className="muted small">Aucune pièce jointe.</li>}
-              {!files && !err && <li className="muted small">Chargement…</li>}
-            </ul>
-            <label className="row">
-              <input type="file" multiple disabled={uploading || (files?.length ?? 0) >= 10} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
-              {uploading && <span className="muted small">Envoi…</span>}
-            </label>
-            <p className="muted small">10 fichiers par tâche, 10 Mo chacun.</p>
+            {files && files.length > 0 && (
+              <ul className="fl">
+                {files.map((f) => {
+                  const ext = (f.fileName.split(".").pop() || "").toLowerCase();
+                  const kind = ["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext) ? "img" : ext === "pdf" ? "pdf" : ["doc", "docx", "odt", "txt", "md"].includes(ext) ? "doc" : ["xls", "xlsx", "csv", "ods"].includes(ext) ? "xls" : ["zip", "rar", "7z"].includes(ext) ? "zip" : "oth";
+                  return (
+                    <li key={f.id} className="fi">
+                      <span className={`fx k-${kind}`} aria-hidden="true">{ext.slice(0, 4) || "fichier"}</span>
+                      <div className="fm">
+                        <button type="button" className="fn" onClick={() => openFile(f)} title="Télécharger">{f.fileName}</button>
+                        <span className="fs">{fileSize(f.size)}{canAssign && f.uploadedBy ? ` · ${nameOf(f.uploadedBy)}` : ""}</span>
+                      </div>
+                      <button type="button" className="ib2" aria-label={`Télécharger ${f.fileName}`} onClick={() => openFile(f)}><Icon name="download" size={16} /></button>
+                      {f.canDelete && <button type="button" className="ib2" aria-label={`Supprimer ${f.fileName}`} onClick={() => removeFile(f)}><Icon name="trash" size={16} /></button>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {files && files.length === 0 && <div className="empty-tab"><Icon name="clip" size={22} /><b>Aucune pièce jointe</b><span>Ajoutez des documents, images ou maquettes.</span></div>}
+            {!files && !err && <p className="muted small">Chargement…</p>}
+            {(files?.length ?? 0) < 10 ? (
+              <label className={`drop ${uploading ? "busy" : ""}`}>
+                <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
+                <Icon name="clip" size={18} />
+                <span><b>{uploading ? "Envoi en cours…" : "Ajouter des fichiers"}</b><small>Cliquez pour choisir · 10 Mo maximum par fichier</small></span>
+              </label>
+            ) : (
+              <p className="muted small">Limite atteinte : 10 fichiers par tâche.</p>
+            )}
+            {files && files.length > 0 && <p className="fcount">{files.length} / 10 fichiers</p>}
           </div>
 
           <div className={`tab-content ${tab === "activities" ? "on" : ""}`}>
