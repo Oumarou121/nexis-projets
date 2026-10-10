@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, download, upload } from "./api.js";
+import { CommentsSkeleton, RowsSkeleton } from "./Skeleton.jsx";
 import LabelChips from "./LabelChips.jsx";
 import TaskDependencies from "./TaskDependencies.jsx";
 import Timesheets from "./Timesheets.jsx";
@@ -8,6 +9,28 @@ import { MAX_FILE_BYTES, PRIORITY, TASK_STATUS, fileSize, fmtDuration, isLate, m
 
 const fmt = (iso) =>
   new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+const dayKey = (iso) => new Date(iso).toLocaleDateString("fr-CA");
+const dayLabel = (iso) => {
+  const d = new Date(iso);
+  const t = new Date();
+  const y = new Date();
+  y.setDate(t.getDate() - 1);
+  if (d.toDateString() === t.toDateString()) return "Aujourd'hui";
+  if (d.toDateString() === y.toDateString()) return "Hier";
+  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+};
+const hour = (iso) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const groupByDay = (list) => {
+  const out = [];
+  for (const c of list) {
+    const k = dayKey(c.createdAt);
+    const last = out[out.length - 1];
+    if (last && last.k === k) last.items.push(c);
+    else out.push({ k, label: dayLabel(c.createdAt), items: [c] });
+  }
+  return out;
+};
 
 const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeting: "Réunion", note: "Note" };
 
@@ -409,7 +432,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
               </ul>
             )}
             {files && files.length === 0 && <div className="empty-tab"><Icon name="clip" size={22} /><b>Aucune pièce jointe</b><span>Ajoutez des documents, images ou maquettes.</span></div>}
-            {!files && !err && <p className="muted small">Chargement…</p>}
+            {!files && !err && <RowsSkeleton rows={2} h={64} label="Chargement des pièces jointes" />}
             {(files?.length ?? 0) < 10 ? (
               <label className={`drop ${uploading ? "busy" : ""}`}>
                 <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
@@ -423,12 +446,15 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           </div>
 
           <div className={`tab-content ${tab === "activities" ? "on" : ""}`}>
-            <div className="row between" style={{ marginBottom: "12px" }}>
-              <h3>Activités planifiées</h3>
-              <button onClick={() => setScheduling(true)}>Planifier une activité</button>
+            <div className="ta-head">
+              <div>
+                <h3>Activités planifiées</h3>
+                <p className="muted small">{activities ? (activities.length === 0 ? "Aucune activité" : `${activities.filter((x) => !x.done).length} à faire · ${activities.filter((x) => x.done).length} terminée(s)`) : "Chargement…"}</p>
+              </div>
+              <button className="pj-ok ta-add" onClick={() => setScheduling(true)}><Icon name="plus" size={16} /> Planifier une activité</button>
             </div>
             {scheduling && (
-              <div className="card" style={{ marginBottom: "12px" }}>
+              <div className="ta-form">
                 <form onSubmit={createActivity}>
                   <div className="fg">
                     <div><label>Type</label>
@@ -452,52 +478,83 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 </form>
               </div>
             )}
-            <ul className="activity-list">
-              {(activities ?? []).map((a) => (
-                <li key={a.id} className="activity-item">
-                  <input
-                    type="checkbox"
-                    checked={a.done}
-                    onChange={() => toggleActivityDone(a)}
-                  />
-                  <span className={`activity-type ${a.type}`}>{ACTIVITY_TYPES[a.type]}</span>
-                  <span className={a.done ? "activity-done" : ""}>{a.summary}</span>
-                  {a.dueDate && <span className="muted small">{a.dueDate}</span>}
-                  <span className="muted small" style={{ marginLeft: "auto" }}>{a.assigneeId ? nameOf(a.assigneeId) : "—"}</span>
-                  <button className="link small" onClick={() => removeActivity(a)}>Supprimer</button>
+            <ul className="ta-list">
+              {(activities ?? []).map((a) => {
+                const late = !a.done && isLate({ dueDate: a.dueDate, status: "todo" });
+                return (
+                  <li key={a.id} className={`ta-item ${a.done ? "is-done" : ""}`}>
+                    <button
+                      type="button"
+                      className={`ta-check ${a.done ? "on" : ""}`}
+                      role="checkbox"
+                      aria-checked={a.done}
+                      aria-label={a.done ? "Marquer comme à faire" : "Marquer comme terminée"}
+                      onClick={() => toggleActivityDone(a)}
+                    >
+                      {a.done && <Icon name="check" size={14} />}
+                    </button>
+                    <div className="ta-main">
+                      <p className="ta-sum">{a.summary}</p>
+                      <div className="ta-meta">
+                        <span className={`activity-type ${a.type}`}>{ACTIVITY_TYPES[a.type]}</span>
+                        {a.dueDate && <span className={`ta-due ${late ? "late" : ""}`}><Icon name="calendar" size={13} /> {a.dueDate}{late ? " · en retard" : ""}</span>}
+                      </div>
+                    </div>
+                    {a.assigneeId ? <Avatar name={nameOf(a.assigneeId)} size={28} /> : <Avatar name="" size={28} />}
+                    <button type="button" className="icon-btn ta-del" aria-label="Supprimer l'activité" onClick={() => removeActivity(a)}><Icon name="trash" size={16} /></button>
+                  </li>
+                );
+              })}
+              {activities && activities.length === 0 && (
+                <li className="ta-empty">
+                  <Icon name="clock" size={22} />
+                  <strong>Rien de prévu</strong>
+                  <span>Planifiez un appel, un e-mail ou une réunion liés à cette tâche.</span>
                 </li>
-              ))}
-              {activities && activities.length === 0 && <li className="muted small">Aucune activité planifiée.</li>}
-              {!activities && !err && <li className="muted small">Chargement…</li>}
+              )}
+              {!activities && !err && <li className="sk-li"><RowsSkeleton rows={2} h={40} label="Chargement des activités" /></li>}
             </ul>
           </div>
         </div>
 
 
         <aside className="tp-chat" aria-label="Discussion">
-        <h3 style={{ margin: "4px 0 0" }}>Discussion {comments && <span className="muted small">({comments.length})</span>}</h3>
+        <h3>Discussion {comments && <span className="tc-count">{comments.length}</span>}</h3>
         {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
         <form onSubmit={send} className="composer">
           <textarea rows={2} placeholder="Écrire un commentaire…" aria-label="Écrire un commentaire" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && send(e)} />
           <div className="row">
-            <span className="muted small" style={{ marginRight: "auto" }}>Ctrl + Entrée pour envoyer</span>
+            <span className="muted small" style={{ marginRight: "auto" }}>{text.length > 3500 ? `${text.length} / 4000` : "Ctrl + Entrée pour envoyer"}</span>
             <button className="pj-ok" disabled={busy || !text.trim()}>Commenter</button>
           </div>
         </form>
-        <div className="day"><span>Aujourd'hui</span></div>
-        <div style={{ display: "grid", gap: 12 }}>
-          {(comments ?? []).slice().reverse().map((c) => (
-            <div key={c.id} className="msg">
-              <Avatar name={nameOf(c.authorId)} size={32} />
-              <div className="bubble">
-                <header><strong>{nameOf(c.authorId)}</strong><span className="muted small">{fmt(c.createdAt)}</span></header>
-                <p className="comment-body">{c.body}</p>
-                {c.canDelete && <button className="link small" onClick={() => remove(c)}>Supprimer</button>}
-              </div>
-            </div>
+        <div className="tc-feed">
+          {groupByDay((comments ?? []).slice().reverse()).map((g) => (
+            <section key={g.k} className="tc-day">
+              <div className="day"><span>{g.label}</span></div>
+              {g.items.map((c) => (
+                <div key={c.id} className="msg">
+                  <Avatar name={nameOf(c.authorId)} size={32} />
+                  <div className="bubble">
+                    <header>
+                      <strong>{nameOf(c.authorId)}</strong>
+                      <span className="muted small">{hour(c.createdAt)}</span>
+                      {c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
+                    </header>
+                    <p className="comment-body">{c.body}</p>
+                  </div>
+                </div>
+              ))}
+            </section>
           ))}
-          {comments && comments.length === 0 && <p className="muted">Aucun commentaire pour l'instant.</p>}
-          {!comments && !err && <p className="muted">Chargement…</p>}
+          {comments && comments.length === 0 && (
+            <div className="tc-empty">
+              <Icon name="comment" size={22} />
+              <strong>Aucun commentaire</strong>
+              <span>Lancez la discussion : posez une question ou donnez une mise à jour.</span>
+            </div>
+          )}
+          {!comments && !err && <CommentsSkeleton />}
         </div>
         </aside>
       </div>

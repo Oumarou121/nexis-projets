@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
+import { RowsSkeleton, Skel } from "./Skeleton.jsx";
 import { Avatar, Icon } from "./ui.jsx";
 import { memberName, todayISO } from "./labels.js";
 
@@ -27,25 +28,23 @@ function Entry({ entry, who, member, onSave, onRemove }) {
   }, [entry]);
 
   return (
-    <tr>
-      <td><input type="date" aria-label="Date" className="ti" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} /></td>
-      <td><span className="ass"><Avatar member={member} name={member ? undefined : who} size={22} />{who}</span></td>
-      <td><input className="ti" aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} /></td>
-      <td style={{ textAlign: "right" }}>
-        <input
-          className="ti dur"
-          aria-label="Durée (HH:MM)"
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-          onBlur={() => {
-            const m = hoursToMinutes(duration);
-            if (!m || m <= 0) return setDuration(minutesToHours(entry.duration)); // saisie invalide : on rétablit
-            if (m !== entry.duration) onSave(entry, { duration: m });
-          }}
-        />
-      </td>
-      <td style={{ textAlign: "right" }}><button type="button" className="icon-btn" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={15} /></button></td>
-    </tr>
+    <li className="tsx-row">
+      <input type="date" aria-label="Date" className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
+      <span className="ass tsx-who"><Avatar member={member} name={member ? undefined : who} size={24} /><span>{who}</span></span>
+      <input className="ti tsx-desc" aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
+      <input
+        className="ti dur tsx-dur"
+        aria-label="Durée (HH:MM)"
+        value={duration}
+        onChange={(e) => setDuration(e.target.value)}
+        onBlur={() => {
+          const m = hoursToMinutes(duration);
+          if (!m || m <= 0) return setDuration(minutesToHours(entry.duration)); // saisie invalide : on rétablit
+          if (m !== entry.duration) onSave(entry, { duration: m });
+        }}
+      />
+      <button type="button" className="ib2" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={16} /></button>
+    </li>
   );
 }
 
@@ -103,32 +102,42 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
   const memberOf = (id) => members.find((x) => x.userId === id);
   const nameOf = (id) => (memberOf(id) ? memberName(memberOf(id)) : "Inconnu");
 
+  const count = timesheets?.length ?? 0;
   return (
-    <div>
-      <div className="table-wrap" style={{ margin: "4px 0" }}>
-        <table className="lt" style={{ minWidth: 560 }}>
-          <thead>
-            <tr><th>Date</th><th>Employé</th><th>Description</th><th style={{ textAlign: "right" }}>Durée</th><th /></tr>
-          </thead>
-          <tbody>
-            {(timesheets ?? []).map((t) => <Entry key={t.id} entry={t} who={nameOf(t.userId)} member={memberOf(t.userId)} onSave={saveEntry} onRemove={removeEntry} />)}
-            {timesheets && timesheets.length === 0 && !adding && <tr><td colSpan={5} className="muted" style={{ textAlign: "center", padding: 20 }}>Aucune feuille de temps.</td></tr>}
-          </tbody>
-          <tfoot>
-            <tr><td colSpan={3}>Heures passées</td><td style={{ textAlign: "right" }}>{minutesToHours(totalMinutes)}</td><td /></tr>
-          </tfoot>
-        </table>
-      </div>
+    <div className="tsx">
+      {!timesheets && !err ? (
+        <div role="status" aria-busy="true" aria-label="Chargement des feuilles de temps">
+          <div className="tsx-sum" aria-hidden="true"><Skel w={44} h={44} r={14} className="flex-none" /><div className="sk-col"><div className="sk-ln" style={{ height: 30 }}><Skel w={80} h={24} /></div><div className="sk-ln" style={{ height: 20 }}><Skel w={130} h={13} /></div></div></div>
+          <RowsSkeleton rows={3} h={52} label="Chargement des lignes" />
+        </div>
+      ) : (
+        <div className="fade-in">
+          <div className="tsx-sum">
+            <span className="tsx-ico"><Icon name="clock" size={20} /></span>
+            <div><b>{minutesToHours(totalMinutes)}</b><span>heures passées · {count} ligne{count > 1 ? "s" : ""}</span></div>
+          </div>
+          {count > 0 ? (
+            <>
+              <div className="tsx-head" aria-hidden="true"><span>Date</span><span>Employé</span><span>Description</span><span>Durée</span><span /></div>
+              <ul className="tsx-list">
+                {timesheets.map((t) => <Entry key={t.id} entry={t} who={nameOf(t.userId)} member={memberOf(t.userId)} onSave={saveEntry} onRemove={removeEntry} />)}
+              </ul>
+            </>
+          ) : !adding && (
+            <div className="empty-tab"><Icon name="clock" size={22} /><b>Aucune feuille de temps</b><span>Enregistrez le temps passé sur cette tâche.</span></div>
+          )}
+        </div>
+      )}
       {adding ? (
-        <form onSubmit={addEntry} className="row" style={{ marginTop: 8, flexWrap: "wrap" }}>
-          <input type="date" aria-label="Date" value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} style={{ flex: "none" }} />
-          <input placeholder="Description" aria-label="Description" value={newEntry.description} onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })} style={{ flex: "1 1 180px" }} />
-          <input aria-label="Durée (HH:MM)" value={newEntry.duration} onChange={(e) => setNewEntry({ ...newEntry, duration: e.target.value })} style={{ width: 80, flex: "none", textAlign: "right" }} placeholder="HH:MM" />
+        <form onSubmit={addEntry} className="tsx-form">
+          <input type="date" aria-label="Date" value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} />
+          <input placeholder="Description" aria-label="Description" value={newEntry.description} onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })} className="grow" />
+          <input aria-label="Durée (HH:MM)" value={newEntry.duration} onChange={(e) => setNewEntry({ ...newEntry, duration: e.target.value })} className="dur-in" placeholder="HH:MM" />
           <button type="submit">Ajouter</button>
           <button type="button" className="ghost" onClick={() => { setAdding(false); setErr(""); }}>Annuler</button>
         </form>
       ) : (
-        <button type="button" className="ghost" style={{ marginTop: 8 }} onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Ajouter une ligne</button>
+        <button type="button" className="add-dash" disabled={!timesheets} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Ajouter une ligne</button>
       )}
       {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
     </div>

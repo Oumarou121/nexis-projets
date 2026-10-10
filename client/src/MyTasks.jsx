@@ -1,3 +1,4 @@
+import { KpiSkeleton, MyTasksSkeleton, Skel } from "./Skeleton.jsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 import LabelChips from "./LabelChips.jsx";
@@ -76,10 +77,11 @@ export default function MyTasks({ orgId, onOpenProject }) {
       <div className="mt-head">
         <div>
           <h2>Mes tâches</h2>
-          <p>{list ? `${open} à traiter · ${shown.length} affichée${shown.length > 1 ? "s" : ""}` : "Chargement…"}</p>
+          {list ? <p>{open} à traiter · {shown.length} affichée{shown.length > 1 ? "s" : ""}</p> : <p><Skel w={190} h={14} className="sk-inline" /></p>}
         </div>
       </div>
-      <div className="rp-kpis">
+      {!list && !err ? <KpiSkeleton /> : (
+      <div className="rp-kpis fade-in">
         {[
           ["À traiter", open, "list", ""],
           ["En retard", late, "clock", late ? "bad" : ""],
@@ -89,6 +91,7 @@ export default function MyTasks({ orgId, onOpenProject }) {
           <div key={label} className={`rp-kpi ${tone}`}><span className="rp-ico"><Icon name={icon} size={18} /></span><div><b>{value}</b><span>{label}</span></div></div>
         ))}
       </div>
+      )}
       <div className="mt-filters">
         <div className="mt-search">
           <Icon name="search" size={16} />
@@ -102,6 +105,9 @@ export default function MyTasks({ orgId, onOpenProject }) {
           <option value="">Toutes les priorités</option>
           {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        {!list && (
+          <select aria-label="Étiquette" disabled><option>Toutes les étiquettes</option></select>
+        )}
         {allLabels.length > 0 && (
           <select aria-label="Étiquette" value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}>
             <option value="">Toutes les étiquettes</option>
@@ -117,7 +123,8 @@ export default function MyTasks({ orgId, onOpenProject }) {
         {filtered && <button type="button" className="mt-clear" onClick={() => setF({ q: "", status: "", priority: "", due: "", label: "" })}>Effacer les filtres</button>}
       </div>
       {err && <p className="error mt-err">{err}</p>}
-      <div className="table-wrap lt-wrap">
+      {!list && !err ? <MyTasksSkeleton /> : (
+      <div className="table-wrap lt-wrap fade-in">
         <table className="lt mt-table">
           <thead><tr><th>Tâche</th><th>Échéance</th><th>Statut</th></tr></thead>
           <tbody>
@@ -158,10 +165,10 @@ export default function MyTasks({ orgId, onOpenProject }) {
             {list && shown.length === 0 && !err && (
               <tr className="empty-row"><td colSpan={3}><div className="empty-tab"><Icon name="check" size={22} /><b>{list.length === 0 ? "Rien à faire pour le moment" : "Aucun résultat"}</b><span>{list.length === 0 ? "Aucune tâche ne vous est assignée." : "Aucune tâche ne correspond aux filtres."}</span></div></td></tr>
             )}
-            {!list && !err && <tr className="empty-row"><td colSpan={3}><p className="muted small" style={{ textAlign: "center", margin: 0 }}>Chargement…</p></td></tr>}
           </tbody>
         </table>
       </div>
+      )}
     </>
   );
 }

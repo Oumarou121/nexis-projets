@@ -10,6 +10,7 @@ import ProjectSettings from "./ProjectSettings.jsx";
 import Reports from "./Reports.jsx";
 import TaskDetail from "./TaskDetail.jsx";
 import TaskSearch, { applySearch, groupTasks } from "./TaskSearch.jsx";
+import { CalendarSkeleton, KanbanSkeleton, ListSkeleton, PlanSkeleton, ReportsSkeleton, Skel } from "./Skeleton.jsx";
 import TaskSidebar from "./TaskSidebar.jsx";
 import { Avatar, DateField, Icon, PriorityStar, StatusPill } from "./ui.jsx";
 import { PRIORITY, TASK_STATUS, isLate, memberName, projectColor, shortDate } from "./labels.js";
@@ -29,9 +30,10 @@ const EMPTY = { title: "", description: "", labels: "", assigneeId: "", priority
 const parseLabels = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Tâches d'un projet. `members` vient de NEXIS Identity ; `canAssign` = droit de les lister. */
-export default function Tasks({ orgId, project: initial, members, canAssign, command, onBack, onNav }) {
+export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, onBack, onNav }) {
   const [project, setProject] = useState(initial);
   const [list, setList] = useState([]);
+  const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [err, setErr] = useState("");
   const [view, setViewState] = useState(readView);
@@ -52,7 +54,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
   }, [command]);
   const who = (id) => members.find((m) => m.userId === id);
 
-  const load = useCallback(() => api(base).then(setList).catch((e) => setErr(e.message)), [base]);
+  const load = useCallback(() => api(base).then(setList).catch((e) => setErr(e.message)).finally(() => setLoaded(true)), [base]);
   useEffect(() => { load(); }, [load]);
 
   // Dépendances de tout le projet (flèches du Gantt). Rechargées à l'ouverture de la vue et au
@@ -145,6 +147,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
   }, [subsOf]);
   const allLabels = useMemo(() => [...new Set(top.flatMap((t) => t.labels ?? []))].sort(), [top]);
   const shown = applySearch(labelFilter ? top.filter((t) => t.labels?.includes(labelFilter)) : top, search);
+  const busy = (!loaded || !ready) && !err;
   const groups = groupTasks(shown, search.groupBy, members);
   const closeDetail = useCallback(() => setOpenId(null), []);
   // Ouvrir la page détail ferme toujours l'aperçu rapide : jamais les deux en même temps.
@@ -280,7 +283,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
           <button type="button" className="pg-gear" onClick={() => setShowSettings(true)} title="Paramètres du projet" aria-label="Paramètres du projet"><Icon name="gear" size={18} /></button>
         </div>
         <div className="pg-meta">
-          <span className="pg-prog"><span className="pj-pb"><i style={{ width: `${top.length ? Math.round((top.filter((t) => t.status === "done").length / top.length) * 100) : 0}%`, background: projectColor(project.name, project.color) }} /></span>{top.filter((t) => t.status === "done").length} / {top.length} tâches</span>
+          {busy ? <span className="pg-prog"><Skel w={150} h={14} /></span> : <span className="pg-prog"><span className="pj-pb"><i style={{ width: `${top.length ? Math.round((top.filter((t) => t.status === "done").length / top.length) * 100) : 0}%`, background: projectColor(project.name, project.color) }} /></span>{top.filter((t) => t.status === "done").length} / {top.length} tâches</span>}
           <span className="pj-avs">
             {[...new Set(top.map((t) => t.assigneeId).filter(Boolean))].slice(0, 4).map((id) => {
               const m = members.find((x) => x.userId === id);
@@ -306,7 +309,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
               {allLabels.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           )}
-          <span className="cp-count">{shown.length} tâche{shown.length > 1 ? "s" : ""}</span>
+          <span className="cp-count">{busy ? <Skel w={56} h={14} className="sk-inline" /> : <>{shown.length} tâche{shown.length > 1 ? "s" : ""}</>}</span>
           <div className="seg" role="tablist" aria-label="Vues">
             {[["kanban", "Kanban", "kanban"], ["list", "Liste", "list"], ["gantt", "Planning", "gantt"], ["calendar", "Calendrier", "calendar"], ["reports", "Rapports", "chart"]].map(([id, label, icon]) => (
               <button key={id} role="tab" aria-selected={view === id} className={view === id ? "on" : ""} onClick={() => setView(id)} title={label} aria-label={label}>
@@ -318,7 +321,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
       </div>
       {err && <p className="error">{err}</p>}
 
-      {view === "kanban" ? (
+      {busy ? (
+        view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />
+      ) : view === "kanban" ? (
         <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={move} onChange={change} onQuickAdd={quickAdd} onRemove={remove} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
         <Gantt tasks={shown} dependencies={deps} members={members} onMove={move} onChange={change} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
@@ -327,7 +332,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
       ) : view === "reports" ? (
         <Reports tasks={shown} members={members} />
       ) : (
-        <div className="table-wrap lt-wrap">
+        <div className="table-wrap lt-wrap fade-in">
           <table className="lt">
             <thead>
               <tr><th>Tâche</th><th>Responsable</th><th>Échéance</th><th>Progression</th><th>Statut</th><th /></tr>

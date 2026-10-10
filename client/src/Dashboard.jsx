@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Avatar, Icon } from "./ui.jsx";
+import { DashboardSkeleton } from "./Skeleton.jsx";
 import { PROJECT_STATUS, STATUS_COLOR, TASK_STATUS, memberName } from "./labels.js";
 
 const PROJECT_COLOR = { planned: "#9ca3af", active: "#22c55e", on_hold: "#f59e0b", done: "#3b82f6" };
@@ -35,7 +36,7 @@ function Breakdown({ title, hint, labels, counts, colors }) {
 }
 
 /** Indicateurs de l'organisation active. `members` sert à nommer la charge par personne. */
-export default function Dashboard({ orgId, members, onShowMine }) {
+export default function Dashboard({ orgId, members, ready = true, onShowMine }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
 
@@ -46,7 +47,7 @@ export default function Dashboard({ orgId, members, onShowMine }) {
   }, [orgId]);
 
   if (err) return <p className="error db-err">{err}</p>;
-  if (!d) return <p className="muted db-err">Chargement…</p>;
+  if (!d || !ready) return <DashboardSkeleton />;
 
   const open = d.tasksTotal - d.tasksByStatus.done;
   const rate = d.tasksTotal ? Math.round((d.tasksByStatus.done / d.tasksTotal) * 100) : 0;
@@ -63,7 +64,7 @@ export default function Dashboard({ orgId, members, onShowMine }) {
   ];
 
   return (
-    <>
+    <div className="fade-in">
       <div className="mt-head db-head">
         <div>
           <h2>Tableau de bord</h2>
@@ -102,6 +103,6 @@ export default function Dashboard({ orgId, members, onShowMine }) {
           </ul>
         )}
       </section>
-    </>
+    </div>
   );
 }

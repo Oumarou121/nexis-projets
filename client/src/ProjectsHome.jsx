@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
+import { ProjectBentoSkeleton, ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
 import { ColorPicker, Icon } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS, memberName, projectColor, todayISO } from "./labels.js";
 
@@ -187,7 +188,7 @@ function Timeline({ list, members, onOpen }) {
   const gridStyle = { "--g1": `${cuts[0]}%`, "--g2": `${cuts[1]}%`, "--g3": `${cuts[2]}%`, "--td": `${todayPct}%` };
 
   return (
-    <section className="pj-tl" aria-label="Chronologie des projets">
+    <section className="pj-tl fade-in" aria-label="Chronologie des projets">
       <div className="pj-tl-hdr">
         <div className="pj-tl-ctl">
           <button type="button" className="pj-it" aria-label="Période précédente" onClick={() => setOff(off - 1)}><Icon name="back" size={16} /></button>
@@ -260,7 +261,7 @@ function Timeline({ list, members, onOpen }) {
 /* ---------- Vue Liste ---------- */
 function ListView({ list, members, onOpen }) {
   return (
-    <section className="pj-lt" aria-label="Liste des projets">
+    <section className="pj-lt fade-in" aria-label="Liste des projets">
       <div className="pj-lh"><span>Projet</span><span>Statut</span><span>Avancement</span><span>Échéance</span><span>Équipe</span><span /></div>
       {list.map((p) => {
         const color = projectColor(p.name, p.color);
@@ -290,7 +291,7 @@ function ListView({ list, members, onOpen }) {
 /* ---------- Vue Cartes ---------- */
 function CardsView({ list, members, onOpen, onCreate, canCreate }) {
   return (
-    <section className="pj-cg" aria-label="Projets">
+    <section className="pj-cg fade-in" aria-label="Projets">
       {list.map((p) => {
         const color = projectColor(p.name, p.color);
         const dd = dueInfo(p);
@@ -323,13 +324,14 @@ function CardsView({ list, members, onOpen, onCreate, canCreate }) {
 }
 
 /* ---------- Page ---------- */
-export default function Projects({ orgId, onOpen, members = [] }) {
+export default function Projects({ orgId, onOpen, members = [], ready = true }) {
   const [list, setList] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [view, setViewState] = useState(getView);
+  const busy = (!loaded || !ready) && !err;
   const base = `/api/organizations/${orgId}/projects`;
 
   const load = useCallback(
@@ -364,11 +366,11 @@ export default function Projects({ orgId, onOpen, members = [] }) {
       <div className="pj-head">
         <div>
           <h1>Vos projets</h1>
-          <p className="pj-sum">
+          {busy ? <p className="pj-sum"><Skel w={300} h={16} className="sk-inline" /></p> : <p className="pj-sum">
             {plural(list.length, "projet", "projets")}, {plural(stats.active, "actif", "actifs")}.{" "}
             {stats.late > 0 ? <b>{plural(stats.late, "tâche en retard", "tâches en retard")}</b> : "Aucune tâche en retard."}
             {stats.late > 0 && " à reprendre."}
-          </p>
+          </p>}
         </div>
         <button className="pj-new" onClick={() => setCreating(true)}>Nouveau projet</button>
       </div>
@@ -387,19 +389,21 @@ export default function Projects({ orgId, onOpen, members = [] }) {
 
       {err && <p className="error" role="alert" style={{ padding: 0 }}>{err}</p>}
 
-      {shown.length > 0 && view === "timeline" && <Timeline list={shown} members={members} onOpen={onOpen} />}
-      {shown.length > 0 && view === "list" && <ListView list={shown} members={members} onOpen={onOpen} />}
-      {(shown.length > 0 || (loaded && !err && !needle)) && view === "cards" && <CardsView list={shown} members={members} onOpen={onOpen} onCreate={() => setCreating(true)} canCreate />}
+      {busy && (view === "cards" ? <ProjectCardsSkeleton /> : <ProjectTimelineSkeleton />)}
+      {!busy && shown.length > 0 && view === "timeline" && <Timeline list={shown} members={members} onOpen={onOpen} />}
+      {!busy && shown.length > 0 && view === "list" && <ListView list={shown} members={members} onOpen={onOpen} />}
+      {!busy && (shown.length > 0 || (loaded && !err && !needle)) && view === "cards" && <CardsView list={shown} members={members} onOpen={onOpen} onCreate={() => setCreating(true)} canCreate />}
 
-      {loaded && !err && shown.length === 0 && view !== "cards" && (
+      {!busy && loaded && !err && shown.length === 0 && view !== "cards" && (
         <div className="empty">
           <b>{list.length ? "Aucun résultat" : "Aucun projet pour l'instant"}</b>
           {list.length ? "Essayez un autre mot-clé." : "Cliquez sur « Nouveau projet » pour créer le premier."}
         </div>
       )}
 
-      {list.length > 0 && (
-        <section className="pj-bento" aria-label="Résumé">
+      {busy && <ProjectBentoSkeleton />}
+      {!busy && list.length > 0 && (
+        <section className="pj-bento fade-in" aria-label="Résumé">
           <div className="pj-t k"><b>{stats.late}</b><span>{stats.late > 1 ? "tâches en retard" : "tâche en retard"}</span></div>
           <div className="pj-t c"><b>{stats.milestones}</b><span>{stats.milestones > 1 ? "jalons ce mois-ci" : "jalon ce mois-ci"}</span></div>
           <div className="pj-t w">

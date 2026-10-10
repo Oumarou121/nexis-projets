@@ -14,6 +14,7 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
     .eq("organization_id", req.params.orgId)
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (["create", "update", "delete"].includes(req.query.action)) q = q.eq("action", req.query.action);
   if (req.query.before) {
     const d = new Date(String(req.query.before));
     if (!Number.isNaN(d.getTime())) q = q.lt("created_at", d.toISOString());

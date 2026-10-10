@@ -8,6 +8,7 @@ import Activity from "./Activity.jsx";
 import { Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
+import { PageSkeleton } from "./Skeleton.jsx";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
 
@@ -16,7 +17,7 @@ export default function App() {
   const [orgId, setOrgId] = useState("");
   const [project, setProject] = useState(null);
   const [tab, setTab] = useState("projects");
-  const [people, setPeople] = useState({ members: [], canAssign: false });
+  const [people, setPeople] = useState({ members: [], canAssign: false, ready: false });
   const [err, setErr] = useState("");
   const [theme, setThemeState] = useState(getTheme);
   const [cmd, setCmd] = useState(null); // commande envoyée au projet ouvert (menu Configuration)
@@ -36,7 +37,8 @@ export default function App() {
   useEffect(() => {
     if (!orgId) return;
     setProject(null);
-    api(`/api/organizations/${orgId}/members`).then(setPeople).catch(() => setPeople({ members: [], canAssign: false }));
+    setPeople((p) => ({ ...p, ready: false }));
+    api(`/api/organizations/${orgId}/members`).then((p) => setPeople({ ...p, ready: true })).catch(() => setPeople({ members: [], canAssign: false, ready: true }));
   }, [orgId]);
 
   async function openProject(id) {
@@ -111,13 +113,15 @@ export default function App() {
         {orgId && project ? (
           <Tasks key={project.id} orgId={orgId} project={project} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (
-          <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} onShowMine={() => setTab("mine")} /></div>
+          <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} ready={people.ready} onShowMine={() => setTab("mine")} /></div>
         ) : orgId && tab === "activity" ? (
-          <div className="content"><Activity key={orgId} orgId={orgId} members={people.members} onOpenProject={openProject} /></div>
+          <div className="content"><Activity key={orgId} orgId={orgId} members={people.members} ready={people.ready} onOpenProject={openProject} /></div>
         ) : orgId && tab === "mine" ? (
           <div className="content"><MyTasks key={orgId} orgId={orgId} onOpenProject={openProject} /></div>
         ) : orgId ? (
-          <Projects key={orgId} orgId={orgId} members={people.members} onOpen={setProject} />
+          <Projects key={orgId} orgId={orgId} members={people.members} ready={people.ready} onOpen={setProject} />
+        ) : !access && !err ? (
+          <PageSkeleton />
         ) : (
           access && <p className="muted content">Aucune organisation active pour ce compte.</p>
         )}
