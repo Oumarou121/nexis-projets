@@ -1,16 +1,36 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Avatar } from "./ui.jsx";
+import { Avatar, Icon } from "./ui.jsx";
 import { PROJECT_STATUS, STATUS_COLOR, TASK_STATUS, memberName } from "./labels.js";
 
 const PROJECT_COLOR = { planned: "#9ca3af", active: "#22c55e", on_hold: "#f59e0b", done: "#3b82f6" };
 
-function Stat({ label, value, tone, dot }) {
+/** Carte « répartition » : barre segmentée + une ligne par statut (valeur et part). */
+function Breakdown({ title, hint, labels, counts, colors }) {
+  const total = Object.keys(labels).reduce((s, k) => s + (counts[k] ?? 0), 0);
   return (
-    <div className={`card stat ${tone ?? ""}`}>
-      <strong>{value}</strong>
-      <span className="muted small">{dot && <i className="dot" style={{ background: dot, marginRight: 6 }} />}{label}</span>
-    </div>
+    <section className="db-card">
+      <header><h3>{title}</h3><span>{hint}</span></header>
+      {total === 0 ? (
+        <div className="empty-tab"><Icon name="chart" size={22} /><b>Rien à répartir</b><span>Aucun élément pour le moment.</span></div>
+      ) : (
+        <>
+          <div className="db-seg" role="img" aria-label={title}>
+            {Object.keys(labels).map((k) => counts[k] > 0 && <i key={k} style={{ flex: counts[k], background: colors[k] }} title={`${labels[k]} : ${counts[k]}`} />)}
+          </div>
+          <ul className="db-rows">
+            {Object.entries(labels).map(([k, l]) => (
+              <li key={k}>
+                <i className="dot" style={{ background: colors[k] }} />
+                <span>{l}</span>
+                <b>{counts[k] ?? 0}</b>
+                <small>{Math.round(((counts[k] ?? 0) / total) * 100)} %</small>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -20,54 +40,68 @@ export default function Dashboard({ orgId, members, onShowMine }) {
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    setD(null);
+    setErr("");
     api(`/api/organizations/${orgId}/dashboard`).then(setD).catch((e) => setErr(e.message));
   }, [orgId]);
 
-  if (err) return <p className="error" style={{ padding: 0 }}>{err}</p>;
-  if (!d) return <p className="muted">Chargement…</p>;
+  if (err) return <p className="error db-err">{err}</p>;
+  if (!d) return <p className="muted db-err">Chargement…</p>;
 
   const open = d.tasksTotal - d.tasksByStatus.done;
+  const rate = d.tasksTotal ? Math.round((d.tasksByStatus.done / d.tasksTotal) * 100) : 0;
   const max = Math.max(1, ...d.workload.map((w) => w.open));
   const name = (id) => {
     const m = members.find((x) => x.userId === id);
     return m ? memberName(m) : "Membre";
   };
+  const kpis = [
+    ["Projets actifs", d.projectsByStatus.active, "grid", ""],
+    ["Tâches ouvertes", open, "list", ""],
+    ["Tâches en retard", d.lateTasks, "clock", d.lateTasks > 0 ? "bad" : ""],
+    ["Ouvertes sans responsable", d.unassignedOpenTasks, "flag", d.unassignedOpenTasks > 0 ? "warn" : ""],
+  ];
 
   return (
     <>
-      <div className="crumb2" style={{ margin: "14px 0 10px" }}>
-        <span className="up">Reporting</span>
-        <span className="nm">Tableau de bord</span>
-      </div>
-      <div className="stats">
-        <Stat label="Projets actifs" value={d.projectsByStatus.active} />
-        <Stat label="Tâches ouvertes" value={open} />
-        <Stat label="Tâches en retard" value={d.lateTasks} tone={d.lateTasks > 0 ? "bad" : ""} />
-        <Stat label="Ouvertes sans responsable" value={d.unassignedOpenTasks} />
+      <div className="mt-head db-head">
+        <div>
+          <h2>Tableau de bord</h2>
+          <p>{d.projectsTotal} projet{d.projectsTotal > 1 ? "s" : ""} · {d.tasksTotal} tâche{d.tasksTotal > 1 ? "s" : ""} · {rate} % terminées</p>
+        </div>
+        <button type="button" className="mt-open" onClick={onShowMine}>Voir mes tâches</button>
       </div>
 
-      <h3>Projets par statut</h3>
-      <div className="stats">
-        {Object.entries(PROJECT_STATUS).map(([k, l]) => <Stat key={k} label={l} value={d.projectsByStatus[k]} dot={PROJECT_COLOR[k]} />)}
-      </div>
-
-      <h3>Tâches par statut</h3>
-      <div className="stats">
-        {Object.entries(TASK_STATUS).map(([k, l]) => <Stat key={k} label={l} value={d.tasksByStatus[k]} dot={STATUS_COLOR[k]} />)}
-      </div>
-
-      <h3>Charge par membre <span className="muted small">(tâches ouvertes)</span></h3>
-      <ul className="list">
-        {d.workload.map((w) => (
-          <li key={w.userId} className="card load">
-            <span className="ass"><Avatar name={name(w.userId)} size={24} />{name(w.userId)}</span>
-            <div className="bar"><i style={{ width: `${(w.open / max) * 100}%` }} /></div>
-            <span>{w.open}{w.late > 0 && <span className="late"> · {w.late} en retard</span>}</span>
-          </li>
+      <div className="rp-kpis">
+        {kpis.map(([label, value, icon, tone]) => (
+          <div key={label} className={`rp-kpi ${tone}`}><span className="rp-ico"><Icon name={icon} size={18} /></span><div><b>{value}</b><span>{label}</span></div></div>
         ))}
-        {d.workload.length === 0 && <li className="muted">Aucune tâche ouverte assignée.</li>}
-      </ul>
-      <button className="link" onClick={onShowMine}>Voir mes tâches →</button>
+      </div>
+
+      <div className="db-grid">
+        <Breakdown title="Projets par statut" hint={`${d.projectsTotal} au total`} labels={PROJECT_STATUS} counts={d.projectsByStatus} colors={PROJECT_COLOR} />
+        <Breakdown title="Tâches par statut" hint={`${rate} % terminées`} labels={TASK_STATUS} counts={d.tasksByStatus} colors={STATUS_COLOR} />
+      </div>
+
+      <section className="db-card db-wide">
+        <header><h3>Charge par membre</h3><span>tâches ouvertes assignées</span></header>
+        {d.workload.length === 0 ? (
+          <div className="empty-tab"><Icon name="check" size={22} /><b>Aucune charge à afficher</b><span>Aucune tâche ouverte n'est assignée.</span></div>
+        ) : (
+          <ul className="db-load">
+            {d.workload.map((w) => (
+              <li key={w.userId}>
+                <span className="who"><Avatar name={name(w.userId)} size={28} /><b>{name(w.userId)}</b></span>
+                <div className="bar" role="img" aria-label={`${w.open} ouvertes`}>
+                  <i style={{ width: `${(w.open / max) * 100}%` }} />
+                </div>
+                <span className="num">{w.open}</span>
+                {w.late > 0 ? <em className="late-pill">{w.late} en retard</em> : <em className="ok-pill">à jour</em>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </>
   );
 }

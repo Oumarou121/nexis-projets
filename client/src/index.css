@@ -202,6 +202,47 @@ button:disabled { opacity: .45; cursor: default; transform: none; }
 .load .bar { background: var(--hov); border-radius: 99px; height: 8px; overflow: hidden; padding: 0; cursor: default; }
 .load .bar i { display: block; height: 100%; background: var(--teal); border-radius: 99px; }
 
+/* ---------- Tableau de bord (v17) ---------- */
+.db-head, .db-grid, .db-wide, .db-err { width: calc(100% - 80px); max-width: 1600px; margin-inline: auto; box-sizing: border-box; }
+@media (max-width: 1100px) { .db-head, .db-grid, .db-wide, .db-err { width: calc(100% - 56px); } }
+@media (max-width: 700px) { .db-head, .db-grid, .db-wide, .db-err { width: calc(100% - 32px); } }
+.db-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.db-head .mt-open { border-radius: 99px; min-height: 38px; padding: 0 16px; background: var(--card); color: var(--pri); border: 1px solid var(--bd-s); font-weight: 600; }
+.db-head .mt-open:hover { background: var(--pri-soft); border-color: var(--pri); color: var(--pri); }
+.db-err { padding: 18px 0; }
+.rp-kpi.warn .rp-ico { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.db-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+@media (max-width: 900px) { .db-grid { grid-template-columns: minmax(0, 1fr); } }
+.db-card { background: var(--card); border: 1px solid var(--bd); border-radius: 22px; padding: 20px 22px 22px; }
+.db-wide { margin-bottom: 32px; }
+.db-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
+.db-card h3 { margin: 0; font: 700 16px Sora, "DM Sans", sans-serif; letter-spacing: -.01em; }
+.db-card header span { color: var(--mut); font-size: 13px; }
+.db-seg { display: flex; gap: 3px; height: 12px; border-radius: 99px; overflow: hidden; margin-bottom: 16px; background: var(--hov); }
+.db-seg i { display: block; min-width: 6px; border-radius: 3px; }
+.db-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.db-rows li { display: grid; grid-template-columns: 14px 1fr auto 48px; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--bd); }
+.db-rows li:first-child { border-top: 0; }
+.db-rows b { font-weight: 700; }
+.db-rows small { color: var(--mut); text-align: right; font-size: 12.5px; }
+.db-rows .dot { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.db-load { list-style: none; margin: 0; padding: 0; display: grid; }
+.db-load li { display: grid; grid-template-columns: minmax(130px, 1fr) 3fr 32px 96px; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--bd); }
+.db-load li:first-child { border-top: 0; }
+.db-load .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.db-load .who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db-load .bar { background: var(--hov); border-radius: 99px; height: 10px; overflow: hidden; }
+.db-load .bar i { display: block; height: 100%; background: var(--pri); border-radius: 99px; }
+.db-load .num { font-weight: 700; text-align: right; }
+.db-load em { font-style: normal; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; text-align: center; white-space: nowrap; }
+.late-pill { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.ok-pill { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+@media (max-width: 700px) {
+  .db-load li { grid-template-columns: 1fr auto; row-gap: 6px; }
+  .db-load .bar { grid-column: 1 / -1; order: 3; }
+  .db-card { padding: 16px 14px 18px; }
+}
+
 /* ---------- Kanban (à plat, comme Odoo) ---------- */
 .kanban { min-height: 430px; display: flex; gap: 14px; padding: 14px 20px 28px; overflow-x: auto; align-items: flex-start; scroll-snap-type: x proximity; }
 .kcol { flex: 1 0 270px; max-width: 380px; min-height: 160px; scroll-snap-align: start; background: color-mix(in srgb, var(--lane) 75%, transparent); border-radius: 12px; padding: 10px 10px 12px; }
