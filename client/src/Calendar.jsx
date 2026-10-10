@@ -44,8 +44,9 @@ export default function Calendar({ tasks, members, onOpen, onSidebar }) {
       <div className="plan-nav">
         <button type="button" className="icon-btn" aria-label="Mois précédent" onClick={() => shift(-1)}><Icon name="back" size={18} /></button>
         <button type="button" className="icon-btn" aria-label="Mois suivant" onClick={() => shift(1)}><Icon name="chevronR" size={18} /></button>
-        <button type="button" className="btn" onClick={() => { setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); setOpenDay(null); }}>Aujourd'hui</button>
+        <button type="button" className="pl-today" onClick={() => { setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); setOpenDay(null); }}>Aujourd'hui</button>
         <strong className="plan-month">{label}</strong>
+        <span className="cal2-sum">{[...byDay.values()].reduce((n, a) => n + a.length, 0)} échéance{[...byDay.values()].reduce((n, a) => n + a.length, 0) > 1 ? "s" : ""} affichée{[...byDay.values()].reduce((n, a) => n + a.length, 0) > 1 ? "s" : ""}</span>
       </div>
       <div className="cal2">
         <div className="cal2-main">
@@ -91,6 +92,7 @@ export default function Calendar({ tasks, members, onOpen, onSidebar }) {
         </div>
         <aside className="cal2-side" aria-label="Responsables">
           <h5>Responsables</h5>
+          <p className="cal2-hint">Cochez pour afficher ou masquer.</p>
           {people.map((p) => (
             <label key={p.id} className="cal2-fl">
               <input type="checkbox" checked={!hidden.has(p.id)} onChange={() => toggle(p.id)} style={{ accentColor: p.color }} />

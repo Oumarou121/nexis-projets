@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { TASK_STATUS, memberName } from "./labels.js";
+import { Icon } from "./ui.jsx";
+import { TASK_STATUS, isLate, memberName } from "./labels.js";
 
 const CATS = Object.keys(TASK_STATUS); // ordre du flux : à faire → terminée
 const MAX_SERIES = 8; // au-delà : « Autres » (jamais de teinte supplémentaire)
@@ -208,7 +209,17 @@ export default function Reports({ tasks, members }) {
 
   return (
     <>
-      <div className="mb">
+      <div className="rp-kpis">
+        {[
+          ["Tâches", tasks.length, "list", ""],
+          ["Terminées", `${tasks.length ? Math.round((tasks.filter((t) => t.status === "done").length / tasks.length) * 100) : 0} %`, "check", "ok"],
+          ["En retard", tasks.filter(isLate).length, "clock", tasks.filter(isLate).length ? "bad" : ""],
+          ["Non assignées", tasks.filter((t) => !t.assigneeId).length, "flag", ""],
+        ].map(([label, value, icon, tone]) => (
+          <div key={label} className={`rp-kpi ${tone}`}><span className="rp-ico"><Icon name={icon} size={18} /></span><div><b>{value}</b><span>{label}</span></div></div>
+        ))}
+      </div>
+      <div className="mb rp-tools">
         <div className="seg" role="tablist" aria-label="Type de graphique">
           {Object.entries(KINDS).map(([k, l]) => (
             <button key={k} role="tab" aria-selected={kind === k} className={kind === k ? "on" : ""} onClick={() => { setKind(k); setTip(null); }}>
@@ -225,9 +236,9 @@ export default function Reports({ tasks, members }) {
         )}
       </div>
       {grand === 0 ? (
-        <p className="empty"><b>Aucune donnée à afficher</b>Aucune tâche ne correspond aux filtres.</p>
+        <div className="rp-card"><div className="empty-tab"><Icon name="chart" size={22} /><b>Aucune donnée à afficher</b><span>Aucune tâche ne correspond aux filtres.</span></div></div>
       ) : kind === "table" ? (
-        <div className="table-wrap">
+        <div className="table-wrap lt-wrap">
           <table className="lt" style={{ minWidth: 0 }}>
             <thead><tr><th>Responsable</th>{CATS.map((c) => <th key={c} style={{ textAlign: "right" }}>{TASK_STATUS[c]}</th>)}<th style={{ textAlign: "right" }}>Total</th></tr></thead>
             <tbody>
@@ -245,7 +256,7 @@ export default function Reports({ tasks, members }) {
           </table>
         </div>
       ) : (
-        <div className="chw viz">
+        <div className="chw viz rp-card">
           {legend}
           <div className="viz-wrap">
             <svg viewBox={kind === "pie" ? "0 0 340 330" : `0 0 ${W} ${H}`} role="img" aria-label={`Tâches par ${kind === "pie" ? "responsable" : "étape et par responsable"} — ${grand} au total`} className={kind === "pie" ? "viz-pie" : ""}>
