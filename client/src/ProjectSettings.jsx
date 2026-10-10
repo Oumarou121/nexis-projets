@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Icon } from "./ui.jsx";
+import { ColorPicker, Icon } from "./ui.jsx";
+import { projectColor } from "./labels.js";
 
 const DEFAULT_SETTINGS = {
   dependencies: false,
@@ -41,6 +42,18 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  async function saveColor(color) {
+    setSaving(true);
+    try {
+      onChange?.(await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { color }));
+      setErr("");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveSetting(key, value) {
     setSaving(true);
     try {
@@ -72,6 +85,13 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
         ) : (
           <>
             {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
+            <h5 className="set-h">Couleur du projet</h5>
+            <ColorPicker
+              name="set-color"
+              disabled={saving}
+              value={Number.isInteger(project.color) ? project.color : Number(projectColor(project.name).match(/\d/)[0])}
+              onChange={saveColor}
+            />
             <h5 className="set-h">Visibilité</h5>
             <div className="set-radios" role="radiogroup" aria-label="Visibilité">
               {VISIBILITY.map(([v, label]) => (

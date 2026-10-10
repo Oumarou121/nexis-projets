@@ -63,3 +63,11 @@ export function stageDurations(history, now = Date.now()) {
   });
   return out;
 }
+
+/** Couleur d'un projet : teinte choisie (0 à 4) ou, à défaut, déduite du nom. Variables CSS --pj-0 à --pj-4. */
+export const projectColor = (name = "", color = null) => {
+  if (Number.isInteger(color) && color >= 0 && color <= 4) return `var(--pj-${color})`;
+  let h = 0;
+  for (const c of name.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return `var(--pj-${h % 5})`;
+};

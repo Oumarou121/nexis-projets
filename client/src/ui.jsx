@@ -190,3 +190,17 @@ export function NavMenu({ label, icon, items, active }) {
     </span>
   );
 }
+
+/* ---------- Choix de la couleur d'un projet (5 teintes du thème) ---------- */
+export function ColorPicker({ value, onChange, disabled = false, name = "pj-color" }) {
+  return (
+    <div className="pj-sw" role="radiogroup" aria-label="Couleur du projet">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <label key={i} className="pj-rb">
+          <input type="radio" name={name} value={i} checked={value === i} disabled={disabled} aria-label={`Couleur ${i + 1}`} onChange={() => onChange(i)} />
+          <span><i style={{ background: `var(--pj-${i})` }} /></span>
+        </label>
+      ))}
+    </div>
+  );
+}

@@ -8,7 +8,7 @@ import { changedFields, logActivity } from "../activity.js";
 import { pathsForTasks, removeFiles } from "../storage.js";
 
 const STATUSES = ["planned", "active", "on_hold", "done"];
-const COLS = "id, organization_id, name, description, status, priority, due_date, settings, created_by, created_at, updated_at";
+const COLS = "id, organization_id, name, description, status, priority, due_date, settings, color, created_by, created_at, updated_at";
 
 const toApi = (r) => ({
   id: r.id,
@@ -19,6 +19,7 @@ const toApi = (r) => ({
   priority: r.priority,
   dueDate: r.due_date,
   settings: r.settings,
+  color: r.color,
   createdBy: r.created_by,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -51,6 +52,10 @@ function parse(body, { partial }) {
     if (body.dueDate !== null && !DATE_RE.test(body.dueDate)) throw httpError(400, "Échéance invalide (AAAA-MM-JJ).");
     out.due_date = body.dueDate;
   }
+  if (has("color")) {
+    if (body.color !== null && !(Number.isInteger(body.color) && body.color >= 0 && body.color <= 4)) throw httpError(400, "Couleur invalide (0 à 4).");
+    out.color = body.color;
+  }
   if (has("settings")) {
     if (body.settings !== null && typeof body.settings !== "object") throw httpError(400, "Paramètres invalides.");
     out.settings = body.settings;
@@ -70,19 +75,47 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("projects").select(COLS).eq("organization_id", req.params.orgId).order("created_at", { ascending: false }),
   );
-  // Avancement affiché sur les cartes : tâches principales (hors sous-tâches), terminées / total.
+  // Chiffres affichés sur la page Projets : tâches principales (hors sous-tâches).
+  // Avancement (terminées / total), retards, membres concernés et jalons à venir.
   // Un échec ne bloque pas la liste : les compteurs sont alors à 0.
-  const total = new Map();
-  const done = new Map();
+  const today = new Date().toISOString().slice(0, 10);
+  const stats = new Map();
+  const of = (id) => {
+    if (!stats.has(id)) stats.set(id, { total: 0, done: 0, late: 0, open: {}, milestones: [] });
+    return stats.get(id);
+  };
   if (rows.length > 0) {
-    const { data, error } = await db.from("tasks").select("project_id, status").is("parent_id", null).in("project_id", rows.map((r) => r.id));
+    const { data, error } = await db
+      .from("tasks")
+      .select("project_id, status, assignee_id, due_date, is_milestone")
+      .is("parent_id", null)
+      .in("project_id", rows.map((r) => r.id));
     if (error) console.warn("[projets] compteurs indisponibles :", error.message);
     for (const t of data ?? []) {
-      total.set(t.project_id, (total.get(t.project_id) ?? 0) + 1);
-      if (t.status === "done") done.set(t.project_id, (done.get(t.project_id) ?? 0) + 1);
+      const s = of(t.project_id);
+      s.total += 1;
+      if (t.status === "done") {
+        s.done += 1;
+        continue;
+      }
+      if (t.due_date && t.due_date < today) s.late += 1;
+      if (t.assignee_id) s.open[t.assignee_id] = (s.open[t.assignee_id] ?? 0) + 1;
+      if (t.is_milestone && t.due_date) s.milestones.push(t.due_date);
     }
   }
-  res.json(rows.map((r) => ({ ...toApi(r), taskCount: total.get(r.id) ?? 0, doneCount: done.get(r.id) ?? 0 })));
+  res.json(
+    rows.map((r) => {
+      const s = of(r.id);
+      return {
+        ...toApi(r),
+        taskCount: s.total,
+        doneCount: s.done,
+        lateCount: s.late,
+        openByAssignee: s.open,
+        milestoneDates: s.milestones.sort().slice(0, 10),
+      };
+    }),
+  );
 });
 
 router.get("/:id", requirePermission("projects.read"), async (req, res) => {

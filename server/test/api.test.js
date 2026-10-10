@@ -178,6 +178,8 @@ describe("validation des projets", () => {
     assert.equal((await post({ name: "Projet", priority: "critique" })).status, 400);
     assert.equal((await post({ name: "Projet", status: "fini" })).status, 400);
     assert.equal((await post({ name: "Projet", dueDate: "demain" })).status, 400);
+    assert.equal((await post({ name: "Projet", color: 5 })).status, 400);
+    assert.equal((await post({ name: "Projet", color: "rouge" })).status, 400);
     assert.equal((await post({ name: "Projet", description: "x".repeat(2001) })).status, 400);
   });
 

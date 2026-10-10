@@ -241,12 +241,16 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
       </div>
       <div className="tp-body">
         <div className="stbar" role="group" aria-label="Statut">
-          {Object.entries(TASK_STATUS).map(([v, l]) => {
+          {Object.entries(TASK_STATUS).map(([v, l], i, all) => {
             const d = durations[v];
-            const tip = d ? `${task.status === v ? "Dans cette étape depuis le" : "Dernière entrée le"} ${fmt(d.since)} · total ${fmtDuration(d.ms)}` : undefined;
+            const cur = task.status === v;
+            const past = i < all.findIndex(([k]) => k === task.status);
+            const tip = d ? `${cur ? "Dans cette étape depuis le" : "Dernière entrée le"} ${fmt(d.since)} · total ${fmtDuration(d.ms)}` : undefined;
             return (
-              <button key={v} type="button" className={task.status === v ? "on" : ""} aria-pressed={task.status === v} title={tip} onClick={async () => task.status !== v && setErr((await onMoveTask(task, v)) ?? "")}>
-                {l}{d && <small className="dur">{fmtDuration(d.ms)}</small>}
+              <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
+                {past ? <Icon name="check" size={15} /> : <b>{i + 1}</b>}
+                <span>{l}</span>
+                {d && <small className="dur">{fmtDuration(d.ms)}</small>}
               </button>
             );
           })}
@@ -284,6 +288,12 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                   </form>
                 </div>
               </div>
+              {task.createdBy && (
+                <div className="frow">
+                  <label>Créée par</label>
+                  <span className="fv"><Avatar name={nameOf(task.createdBy)} size={24} />{nameOf(task.createdBy)}{task.createdAt ? ` · ${new Date(task.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}` : ""}</span>
+                </div>
+              )}
             </div>
             <div className="fcol">
               <div className="frow">
@@ -294,11 +304,21 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 </span>
               </div>
               <div className="frow">
-                <label>Priorité</label>
+                <label id="prio-l">Priorité</label>
+                <div className="seg2" role="radiogroup" aria-labelledby="prio-l">
+                  {Object.entries(PRIORITY).map(([v, l]) => (
+                    <label key={v}>
+                      <input type="radio" name="task-prio" value={v} checked={task.priority === v} onChange={async () => setErr((await onChangeTask(task, { priority: v })) ?? "")} />
+                      <span>{l}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="frow">
+                <label htmlFor="task-ms">Jalon</label>
                 <span className="fv">
-                  <select aria-label="Priorité" value={task.priority} onChange={async (e) => setErr((await onChangeTask(task, { priority: e.target.value })) ?? "")}>
-                    {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                  <span className="switch"><input id="task-ms" type="checkbox" checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
+                  <span className="muted small">Marquer comme étape clé</span>
                 </span>
               </div>
             </div>
@@ -306,11 +326,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
 
           <div className="tabs" role="tablist">
             <button className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
-            <button className={tab === "subtasks" ? "on" : ""} onClick={() => setTab("subtasks")}>Sous-tâches</button>
+            <button className={tab === "subtasks" ? "on" : ""} onClick={() => setTab("subtasks")}>Sous-tâches{subtasks.length > 0 && <i>{subtasks.filter((x) => x.status === "done").length}/{subtasks.length}</i>}</button>
             <button className={tab === "dependencies" ? "on" : ""} onClick={() => setTab("dependencies")}>Dépendances</button>
             <button className={tab === "timesheets" ? "on" : ""} onClick={() => setTab("timesheets")}>Feuilles de temps</button>
-            <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>Pièces jointes</button>
-            <button className={tab === "activities" ? "on" : ""} onClick={() => setTab("activities")}>Activités</button>
+            <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>Pièces jointes{files?.length > 0 && <i>{files.length}</i>}</button>
+            <button className={tab === "activities" ? "on" : ""} onClick={() => setTab("activities")}>Activités{activities?.length > 0 && <i>{activities.length}</i>}</button>
           </div>
 
           <div className={`tab-content ${tab === "description" ? "on" : ""}`}>
@@ -421,13 +441,14 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
         </div>
 
 
+        <aside className="tp-chat" aria-label="Discussion">
         <h3 style={{ margin: "4px 0 0" }}>Discussion {comments && <span className="muted small">({comments.length})</span>}</h3>
         {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
         <form onSubmit={send} className="composer">
           <textarea rows={2} placeholder="Écrire un commentaire…" aria-label="Écrire un commentaire" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && send(e)} />
           <div className="row">
             <span className="muted small" style={{ marginRight: "auto" }}>Ctrl + Entrée pour envoyer</span>
-            <button disabled={busy || !text.trim()}>Commenter</button>
+            <button className="pj-ok" disabled={busy || !text.trim()}>Commenter</button>
           </div>
         </form>
         <div className="day"><span>Aujourd'hui</span></div>
@@ -445,6 +466,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           {comments && comments.length === 0 && <p className="muted">Aucun commentaire pour l'instant.</p>}
           {!comments && !err && <p className="muted">Chargement…</p>}
         </div>
+        </aside>
       </div>
     </div>
   );

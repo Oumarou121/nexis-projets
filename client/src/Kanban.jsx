@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import LabelChips from "./LabelChips.jsx";
 import { Avatar, Icon, Menu, PriorityStar, StatusBar, StatusPill } from "./ui.jsx";
-import { TASK_STATUS, isLate, labelColor, shortDate } from "./labels.js";
+import { STATUS_COLOR, TASK_STATUS, isLate, shortDate } from "./labels.js";
 
 /** Création rapide en haut de colonne (comme le « + » d'Odoo) : Entrée ajoute, Échap annule. */
 function QuickAdd({ onAdd, onCancel }) {
@@ -28,14 +28,6 @@ function QuickAdd({ onAdd, onCancel }) {
       </div>
     </form>
   );
-}
-
-/** Bande de couleur à gauche de la carte : première étiquette, sinon priorité haute / urgente. */
-function stripeOf(t) {
-  if (t.labels?.length) return labelColor(t.labels[0]);
-  if (t.priority === "urgent") return "var(--bad)";
-  if (t.priority === "high") return "var(--warn)";
-  return "transparent";
 }
 
 /**
@@ -71,11 +63,12 @@ export default function Kanban({ tasks, members, canAssign, onMove, onChange, on
             aria-label={`${label} (${col.length})`}
           >
             <header className="kcol-head">
+              <i className="kdot" style={{ background: STATUS_COLOR[status] }} aria-hidden="true" />
               <strong>{label}</strong>
+              <span className="kcount" aria-hidden="true">{col.length}</span>
               <button type="button" className="icon-btn" aria-label={`Ajouter une tâche dans « ${label} »`} onClick={() => setAdding(status)}><Icon name="plus" /></button>
             </header>
             <StatusBar tasks={col} />
-            <div className="kcount" aria-hidden="true">{col.length}</div>
             <div className="kcol-body">
               {adding === status && (
                 <QuickAdd onCancel={() => setAdding(null)} onAdd={(title) => onQuickAdd(title, status)} />
@@ -87,43 +80,44 @@ export default function Kanban({ tasks, members, canAssign, onMove, onChange, on
                 return (
                   <article
                     key={t.id}
-                    className={`kcard p-${t.priority} ${dragId === t.id ? "dragging" : ""}`}
-                    style={{ "--stripe": stripeOf(t) }}
+                    className={`kcard p-${t.priority} ${t.status === "done" ? "is-done" : ""} ${dragId === t.id ? "dragging" : ""}`}
                     draggable
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id); }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
                   >
-                    <button className="ktitle" onClick={() => onOpen(t)}>
-                      <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
-                    </button>
-                    <Menu
-                      className="k-menu"
-                      label={`Actions pour ${t.title}`}
-                      trigger={<Icon name="more" />}
-                      items={[
-                        { label: "Ouvrir", icon: "expand", onClick: () => onOpen(t) },
-                        { label: "Aperçu rapide", icon: "list", onClick: () => onSidebar?.(t) },
-                        { label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) },
-                      ]}
-                    />
-                    {t.description && <p className="kdesc">{t.description}</p>}
                     {t.labels?.length > 0 && <LabelChips labels={t.labels} />}
-                    {t.dueDate && (
-                      <p className={`kdate ${late ? "late" : ""}`} title={`Échéance ${t.dueDate}`}>
-                        {shortDate(t.dueDate)}{late ? " · en retard" : ""}
-                      </p>
-                    )}
-                    <div className="k-foot">
+                    <div className="kt">
+                      <button className="ktitle" onClick={() => onOpen(t)}>
+                        <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
+                      </button>
                       <PriorityStar priority={t.priority} onChange={(priority) => onChange(t, { priority })} />
+                      <Menu
+                        className="k-menu"
+                        label={`Actions pour ${t.title}`}
+                        trigger={<Icon name="more" />}
+                        items={[
+                          { label: "Ouvrir", icon: "expand", onClick: () => onOpen(t) },
+                          { label: "Aperçu rapide", icon: "list", onClick: () => onSidebar?.(t) },
+                          { label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) },
+                        ]}
+                      />
+                    </div>
+                    {t.description && <p className="kdesc">{t.description}</p>}
+                    <div className="k-foot">
                       <div className="k-meta">
+                        {t.dueDate && (
+                          <span className={`kdate ${late ? "late" : ""}`} title={`Échéance ${t.dueDate}`}>
+                            <Icon name="clock" size={13} />{shortDate(t.dueDate)}{late ? " · en retard" : ""}
+                          </span>
+                        )}
                         {sub && <span title="Sous-tâches terminées"><Icon name="subtask" size={13} />{sub.done}/{sub.total}</span>}
                         {t.commentCount > 0 && <span title="Commentaires"><Icon name="comment" size={13} />{t.commentCount}</span>}
                         {t.attachmentCount > 0 && <span title="Pièces jointes"><Icon name="clip" size={13} />{t.attachmentCount}</span>}
                       </div>
                       <div className="k-right">
                         {t.assigneeId && (canAssign
-                          ? <Avatar member={member} name={member ? undefined : "Ancien membre"} size={22} />
-                          : <Avatar name="Assignée" size={22} title="Assignée" />)}
+                          ? <Avatar member={member} name={member ? undefined : "Ancien membre"} size={26} />
+                          : <Avatar name="Assignée" size={26} title="Assignée" />)}
                         <StatusPill compact status={t.status} onChange={(s) => onMove(t, s)} />
                       </div>
                     </div>

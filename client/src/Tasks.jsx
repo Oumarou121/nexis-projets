@@ -12,7 +12,7 @@ import TaskDetail from "./TaskDetail.jsx";
 import TaskSearch, { applySearch, groupTasks } from "./TaskSearch.jsx";
 import TaskSidebar from "./TaskSidebar.jsx";
 import { Avatar, DateField, Icon, PriorityStar, StatusPill } from "./ui.jsx";
-import { PRIORITY, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
+import { PRIORITY, TASK_STATUS, isLate, memberName, projectColor, shortDate } from "./labels.js";
 
 const VIEW_KEY = "nexis.tasks.view";
 const readView = () => {
@@ -270,21 +270,31 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
 
   return (
     <>
-      <div className="subnav" role="group" aria-label="Sections du projet">
-        <button type="button" className="pill on" aria-current="page">Tâches</button>
-        <button type="button" className="pill" onClick={() => setShowMilestones(true)}>Jalons</button>
-        <button type="button" className="pill" onClick={() => onNav?.("dashboard")}>Tableau de bord</button>
+      <div className="pg-top"><button type="button" className="link" onClick={onBack}>Projets</button> / <span>{project.name}</span></div>
+      <div className="pg-head">
+        <div className="pg-title">
+          <i className="pj-dot lg" style={{ background: projectColor(project.name, project.color) }} aria-hidden="true" />
+          <ProjectTitle orgId={orgId} project={project} onChange={setProject} />
+          <button type="button" className="pg-gear" onClick={() => setShowSettings(true)} title="Paramètres du projet" aria-label="Paramètres du projet"><Icon name="gear" size={18} /></button>
+        </div>
+        <div className="pg-meta">
+          <span className="pg-prog"><span className="pj-pb"><i style={{ width: `${top.length ? Math.round((top.filter((t) => t.status === "done").length / top.length) * 100) : 0}%`, background: projectColor(project.name, project.color) }} /></span>{top.filter((t) => t.status === "done").length} / {top.length} tâches</span>
+          <span className="pj-avs">
+            {[...new Set(top.map((t) => t.assigneeId).filter(Boolean))].slice(0, 4).map((id) => {
+              const m = members.find((x) => x.userId === id);
+              const n = m ? memberName(m) : "Membre";
+              return <span key={id} className="pj-av" title={n}>{n.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase()}</span>;
+            })}
+          </span>
+        </div>
+        <button className="pj-new" onClick={() => setCreating(true)}><Icon name="plus" size={18} /> Nouvelle tâche</button>
       </div>
-      <div className="cp">
-        <div className="cp-left">
-          <button onClick={() => setCreating(true)}><Icon name="plus" /> Nouveau</button>
-          <div className="crumb2">
-            <span className="up"><button className="link" onClick={onBack}>Projets</button> /</span>
-            <span className="nm">
-              <ProjectTitle orgId={orgId} project={project} onChange={setProject} />
-              <button className="icon-btn" onClick={() => setShowSettings(true)} title="Paramètres du projet" aria-label="Paramètres du projet"><Icon name="gear" size={15} /></button>
-            </span>
-          </div>
+      <ProjectHeader orgId={orgId} project={project} onChange={setProject} onDeleted={onBack} />
+      <div className="pg-tools">
+        <div className="pg-sec" role="group" aria-label="Sections du projet">
+          <button type="button" className="on" aria-current="page">Tâches</button>
+          <button type="button" onClick={() => setShowMilestones(true)}>Jalons</button>
+          <button type="button" onClick={() => onNav?.("dashboard")}>Tableau de bord</button>
         </div>
         <div className="cp-mid"><TaskSearch projectId={project.id} state={search} onChange={setSearch} /></div>
         <div className="cp-right">
@@ -305,7 +315,6 @@ export default function Tasks({ orgId, project: initial, members, canAssign, com
         </div>
       </div>
       {err && <p className="error">{err}</p>}
-      <ProjectHeader orgId={orgId} project={project} onChange={setProject} onDeleted={onBack} />
 
       {view === "kanban" ? (
         <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={move} onChange={change} onQuickAdd={quickAdd} onRemove={remove} onOpen={(task) => setOpenId(task.id)} onSidebar={(task) => setSidebarTask(task)} />
