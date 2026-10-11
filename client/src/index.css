@@ -1779,3 +1779,11 @@ button.cal2-more:hover { background: var(--hov); text-decoration: none; }
 .datef input:disabled { cursor: default; }
 input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
 .ck input:disabled + .bx { cursor: default; }
+
+/* ---------- Logo NEXIS Projets (image) ---------- */
+.brand .logo { width: auto; height: 34px; border-radius: 0; background: none; object-fit: contain; flex: none; }
+@media (max-width: 380px) { .brand .logo { width: auto; height: 28px; } }
+
+/* ---------- Barre de navigation : pas de décalage au chargement ---------- */
+.nav-ph { visibility: hidden; pointer-events: none; }
+.nav-in { animation: fade .2s ease-out; }

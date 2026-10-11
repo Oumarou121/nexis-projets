@@ -9,6 +9,7 @@ import { Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
+import logo from "./assets/logo.png";
 import GlobalSearch from "./GlobalSearch.jsx";
 import { PermsContext, featureOn } from "./perms.js";
 
@@ -70,6 +71,9 @@ export default function App() {
   const has = (p) => !!access?.platformAdmin || !!orgAccess?.permissions?.includes(p);
   const perms = { canCreate: has("projects.create"), canEdit: has("projects.update"), canDelete: has("projects.delete") };
   const inProject = !!project;
+  // Tant que NEXIS n'a pas répondu, la barre garde sa forme définitive (onglets, recherche, avatar
+  // invisibles mais en place) : rien ne se décale quand ils apparaissent.
+  const loading = !access && !err;
   const sendCmd = (name) => setCmd({ name, n: Date.now() });
 
   function goTo(t) {
@@ -81,9 +85,14 @@ export default function App() {
   return (
     <PermsContext.Provider value={perms}>
       <nav className="nav" aria-label="Menu principal">
-        <span className="brand"><span className="logo" /><span className="t">NEXIS Projets</span></span>
+        <span className="brand"><img className="logo" src={logo} alt="" width="58" height="34" /><span className="t">Projets</span></span>
+        {loading && (
+          <div className="nav-scroll nav-ph" aria-hidden="true">
+            {["Projets", "Mes tâches", "Tableau de bord", "Activité"].map((l) => <button key={l} className="nl" tabIndex={-1}>{l}</button>)}
+          </div>
+        )}
         {orgId && (
-          <div className="nav-scroll">
+          <div className="nav-scroll nav-in">
             <button className={`nl ${project || tab === "projects" ? "on" : ""}`} onClick={() => goTo("projects")}>Projets</button>
             <button className={`nl ${!project && tab === "mine" ? "on" : ""}`} onClick={() => goTo("mine")}>Mes tâches</button>
             <button className={`nl ${!project && tab === "dashboard" ? "on" : ""}`} onClick={() => goTo("dashboard")}>Tableau de bord</button>
@@ -108,13 +117,15 @@ export default function App() {
               ))}
             </select>
           )}
-          {orgId && <GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} />}
+          {loading && <span className="pop nav-ph" aria-hidden="true"><span className="icon-btn" /></span>}
+          {orgId && <span className="nav-in"><GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} /></span>}
           <Menu
             label={`Thème : ${THEMES[theme]}`}
             trigger={<Icon name={THEME_ICON[theme]} size={18} />}
             items={Object.entries(THEMES).map(([v, l]) => ({ label: l, icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
           />
-          {orgName && <span className="org-av" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
+          {loading && <span className="org-av nav-ph" aria-hidden="true" />}
+          {orgName && <span className="org-av nav-in" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
         </div>
       </nav>
       <main className="page">
