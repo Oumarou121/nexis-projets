@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { usePerms } from "./perms.js";
 import { Icon } from "./ui.jsx";
 import { STATUS_COLOR, TASK_STATUS, isLate, shortDate } from "./labels.js";
 
@@ -14,6 +15,7 @@ function relDue(d) {
 
 /** Liste des jalons du projet (tâches marquées « jalon ») avec leur avancement global. */
 export default function Milestones({ orgId, projectId, tasks, onOpen, onChange }) {
+  const { canEdit } = usePerms();
   // Terminés en bas ; le reste par échéance (sans date en dernier).
   const ms = (tasks?.filter((t) => t.isMilestone) || []).sort((a, b) => {
     if ((a.status === "done") !== (b.status === "done")) return a.status === "done" ? 1 : -1;
@@ -67,7 +69,7 @@ export default function Milestones({ orgId, projectId, tasks, onOpen, onChange }
                       ) : <span className="muted">Sans échéance</span>}
                     </span>
                   </div>
-                  <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} onClick={() => toggleMilestone(m)}><Icon name="close" size={15} /></button>
+                  {canEdit && <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} onClick={() => toggleMilestone(m)}><Icon name="close" size={15} /></button>}
                 </div>
               </li>
             );

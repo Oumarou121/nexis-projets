@@ -59,14 +59,14 @@ export default function Kanban({ tasks, members, canAssign, onMove, onChange, on
             className={`kcol ${overCol === status ? "over" : ""}`}
             onDragOver={(e) => { e.preventDefault(); setOverCol(status); }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOverCol(null); }}
-            onDrop={(e) => drop(e, status)}
+            onDrop={(e) => onMove && drop(e, status)}
             aria-label={`${label} (${col.length})`}
           >
             <header className="kcol-head">
               <i className="kdot" style={{ background: STATUS_COLOR[status] }} aria-hidden="true" />
               <strong>{label}</strong>
               <span className="kcount" aria-hidden="true">{col.length}</span>
-              <button type="button" className="icon-btn" aria-label={`Ajouter une tâche dans « ${label} »`} onClick={() => setAdding(status)}><Icon name="plus" /></button>
+              {onQuickAdd && <button type="button" className="icon-btn" aria-label={`Ajouter une tâche dans « ${label} »`} onClick={() => setAdding(status)}><Icon name="plus" /></button>}
             </header>
             <StatusBar tasks={col} />
             <div className="kcol-body">
@@ -81,7 +81,7 @@ export default function Kanban({ tasks, members, canAssign, onMove, onChange, on
                   <article
                     key={t.id}
                     className={`kcard p-${t.priority} ${t.status === "done" ? "is-done" : ""} ${dragId === t.id ? "dragging" : ""}`}
-                    draggable
+                    draggable={!!onMove}
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id); }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
                   >
@@ -98,7 +98,7 @@ export default function Kanban({ tasks, members, canAssign, onMove, onChange, on
                         items={[
                           { label: "Ouvrir", icon: "expand", onClick: () => onOpen(t) },
                           { label: "Aperçu rapide", icon: "list", onClick: () => onSidebar?.(t) },
-                          { label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) },
+                          ...(onRemove ? [{ label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) }] : []),
                         ]}
                       />
                     </div>

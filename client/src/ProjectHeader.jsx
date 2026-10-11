@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { DateField, Icon, Menu } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS } from "./labels.js";
@@ -6,6 +7,7 @@ import { PRIORITY, PROJECT_STATUS } from "./labels.js";
 /** Nom du projet, modifiable sur place (dans le fil d'Ariane du panneau de contrôle). */
 export function ProjectTitle({ orgId, project, onChange }) {
   const [name, setName] = useState(project.name);
+  const { canEdit } = usePerms();
   const url = `/api/organizations/${orgId}/projects/${project.id}`;
   async function save() {
     const v = name.trim();
@@ -21,6 +23,7 @@ export function ProjectTitle({ orgId, project, onChange }) {
     <input
       className="ptitle"
       aria-label="Nom du projet"
+      readOnly={!canEdit}
       size={Math.max(6, name.length)}
       value={name}
       onChange={(e) => setName(e.target.value)}
@@ -32,6 +35,7 @@ export function ProjectTitle({ orgId, project, onChange }) {
 
 /** Ligne discrète sous le panneau de contrôle : statut, priorité, échéance, description, menu ⋯. */
 export default function ProjectHeader({ orgId, project, onChange, onDeleted }) {
+  const { canEdit, canDelete } = usePerms();
   const [err, setErr] = useState("");
   const [desc, setDesc] = useState(project.description ?? "");
   const [showDesc, setShowDesc] = useState(!!project.description);
@@ -59,26 +63,27 @@ export default function ProjectHeader({ orgId, project, onChange, onDeleted }) {
   return (
     <>
       <div className="pmeta-row">
-        <select aria-label="Statut du projet" value={project.status} onChange={(e) => save({ status: e.target.value })}>
+        <select aria-label="Statut du projet" disabled={!canEdit} value={project.status} onChange={(e) => save({ status: e.target.value })}>
           {Object.entries(PROJECT_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        <select aria-label="Priorité du projet" value={project.priority} onChange={(e) => save({ priority: e.target.value })}>
+        <select aria-label="Priorité du projet" disabled={!canEdit} value={project.priority} onChange={(e) => save({ priority: e.target.value })}>
           {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>Priorité {l.toLowerCase()}</option>)}
         </select>
         <DateField label="Échéance du projet" value={project.dueDate} placeholder="Échéance" onChange={(dueDate) => save({ dueDate })} />
-        <Menu
+        {(canEdit || canDelete) && <Menu
           label="Plus d'actions sur le projet"
           trigger={<Icon name="more" />}
           items={[
-            { label: showDesc ? "Masquer la description" : "Ajouter une description", icon: "list", onClick: () => setShowDesc(!showDesc) },
-            { label: "Supprimer le projet", icon: "trash", danger: true, onClick: remove },
+            ...(canEdit ? [{ label: showDesc ? "Masquer la description" : "Ajouter une description", icon: "list", onClick: () => setShowDesc(!showDesc) }] : []),
+            ...(canDelete ? [{ label: "Supprimer le projet", icon: "trash", danger: true, onClick: remove }] : []),
           ]}
-        />
+        />}
       </div>
       {showDesc && (
         <div className="pdesc">
           <textarea
             aria-label="Description"
+            readOnly={!canEdit}
             placeholder="Description du projet…"
             rows={1}
             value={desc}

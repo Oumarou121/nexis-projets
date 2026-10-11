@@ -1771,3 +1771,11 @@ button.cal2-more:hover { background: var(--hov); text-decoration: none; }
   .pj-tl, .table-wrap, .lt-wrap, .gantt, .plan, .cal2-main { --sb-inset: 12px; }
   .pj-tl::-webkit-scrollbar, .table-wrap::-webkit-scrollbar, .lt-wrap::-webkit-scrollbar, .gantt::-webkit-scrollbar, .plan::-webkit-scrollbar, .cal2-main::-webkit-scrollbar { height: 10px; }
 }
+
+/* ---------- v34 : lecture seule (droits) ---------- */
+/* Un contrôle en lecture seule garde son aspect normal : ce n'est pas un bouton « grisé ». */
+.spill:disabled, .star:disabled, .stbar button:disabled, .ta-check:disabled { opacity: 1; cursor: default; }
+.stbar button:disabled:not(.on) { opacity: .75; }
+.datef input:disabled { cursor: default; }
+input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
+.ck input:disabled + .bx { cursor: default; }

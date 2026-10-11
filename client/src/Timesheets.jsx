@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { RowsSkeleton, Skel } from "./Skeleton.jsx";
 import { Avatar, Icon } from "./ui.jsx";
@@ -21,6 +22,7 @@ function Entry({ entry, who, member, onSave, onRemove }) {
   const [date, setDate] = useState(entry.date);
   const [description, setDescription] = useState(entry.description ?? "");
   const [duration, setDuration] = useState(minutesToHours(entry.duration));
+  const { canEdit } = usePerms();
   useEffect(() => {
     setDate(entry.date);
     setDescription(entry.description ?? "");
@@ -29,11 +31,12 @@ function Entry({ entry, who, member, onSave, onRemove }) {
 
   return (
     <li className="tsx-row">
-      <input type="date" aria-label="Date" className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
+      <input type="date" aria-label="Date" disabled={!canEdit} className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
       <span className="ass tsx-who"><Avatar member={member} name={member ? undefined : who} size={24} /><span>{who}</span></span>
-      <input className="ti tsx-desc" aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
+      <input className="ti tsx-desc" readOnly={!canEdit} aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
       <input
         className="ti dur tsx-dur"
+        readOnly={!canEdit}
         aria-label="Durée (HH:MM)"
         value={duration}
         onChange={(e) => setDuration(e.target.value)}
@@ -43,7 +46,7 @@ function Entry({ entry, who, member, onSave, onRemove }) {
           if (m !== entry.duration) onSave(entry, { duration: m });
         }}
       />
-      <button type="button" className="ib2" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={16} /></button>
+      {canEdit && <button type="button" className="ib2" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={16} /></button>}
     </li>
   );
 }
@@ -56,6 +59,7 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
   const blank = () => ({ date: todayISO(), description: "", duration: "01:00" });
   const [newEntry, setNewEntry] = useState(blank);
   const base = `/api/organizations/${orgId}/projects/${projectId}/tasks/${taskId}/timesheets`;
+  const { canEdit } = usePerms();
 
   useEffect(() => {
     api(base).then(setTimesheets).catch((e) => setErr(e.message));
@@ -128,7 +132,7 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
           )}
         </div>
       )}
-      {adding ? (
+      {!canEdit ? null : adding ? (
         <form onSubmit={addEntry} className="tsx-form">
           <input type="date" aria-label="Date" value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} />
           <input placeholder="Description" aria-label="Description" value={newEntry.description} onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })} className="grow" />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePerms } from "./perms.js";
 import { PRIORITY, PRIORITY_COLOR, STATUS_COLOR, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
 
 /* ---------- Icônes (SVG, héritent de currentColor) ---------- */
@@ -104,14 +105,15 @@ export function Menu({ trigger, items, label, align = "right", className = "" })
 /* ---------- Statut : pastille cliquable avec menu (remplace le <select>) ---------- */
 export function StatusPill({ status, onChange, compact = false }) {
   const { open, setOpen, ref } = usePopover();
+  const { canEdit } = usePerms();
   return (
     <span className="pop" ref={ref}>
-      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${TASK_STATUS[status]}`} aria-haspopup="menu" aria-expanded={open} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
+      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${TASK_STATUS[status]}`} aria-haspopup="menu" aria-expanded={open} disabled={!canEdit} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
         <i style={{ background: STATUS_COLOR[status] }} />
         {!compact && TASK_STATUS[status]}
-        {!compact && <Icon name="chevron" size={12} />}
+        {!compact && canEdit && <Icon name="chevron" size={12} />}
       </button>
-      {open && (
+      {open && canEdit && (
         <div className="menu left" role="menu">
           {Object.entries(TASK_STATUS).map(([v, l]) => (
             <button key={v} role="menuitemradio" aria-checked={v === status} type="button" className={`mi ${v === status ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); setOpen(false); if (v !== status) onChange(v); }}>
@@ -128,6 +130,7 @@ export function StatusPill({ status, onChange, compact = false }) {
 
 /* ---------- Priorité : étoile à la Odoo (haute/urgente = remplie) ---------- */
 export function PriorityStar({ priority, onChange }) {
+  const { canEdit } = usePerms();
   const hot = priority === "high" || priority === "urgent";
   return (
     <button
@@ -135,7 +138,8 @@ export function PriorityStar({ priority, onChange }) {
       className={`star ${hot ? "on" : ""}`}
       style={hot ? { color: PRIORITY_COLOR[priority] } : undefined}
       aria-label={`Priorité ${PRIORITY[priority]}`}
-      title={`Priorité ${PRIORITY[priority].toLowerCase()}${onChange ? " — cliquer pour changer" : ""}`}
+      disabled={!canEdit}
+      title={`Priorité ${PRIORITY[priority].toLowerCase()}${onChange && canEdit ? " — cliquer pour changer" : ""}`}
       onClick={(e) => { e.stopPropagation(); onChange?.(hot ? "medium" : "high"); }}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill={hot ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z" /></svg>
@@ -161,11 +165,12 @@ export function StatusBar({ tasks }) {
 
 /* ---------- Date : texte court lisible, sélecteur natif en surimpression invisible ---------- */
 export function DateField({ value, onChange, label, late = false, placeholder = "Définir" }) {
+  const { canEdit } = usePerms();
   return (
     <span className={`datef ${value ? "" : "empty"} ${late ? "late" : ""}`}>
       <Icon name="calendar" size={14} />
       <span>{value ? shortDate(value) : placeholder}</span>
-      <input type="date" aria-label={label} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} onClick={(e) => e.currentTarget.showPicker?.()} />
+      <input type="date" aria-label={label} disabled={!canEdit} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} onClick={(e) => e.currentTarget.showPicker?.()} />
     </span>
   );
 }

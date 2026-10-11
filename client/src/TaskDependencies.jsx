@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { RowsSkeleton } from "./Skeleton.jsx";
 import { Icon } from "./ui.jsx";
@@ -6,6 +7,7 @@ import { STATUS_COLOR, TASK_STATUS, isLate, shortDate } from "./labels.js";
 
 /** Tâches qui doivent être terminées avant celle-ci. */
 export default function TaskDependencies({ orgId, projectId, taskId }) {
+  const { canEdit } = usePerms();
   const [dependencies, setDependencies] = useState(null);
   const [adding, setAdding] = useState(false);
   const [availableTasks, setAvailableTasks] = useState(null);
@@ -73,7 +75,7 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
                       <span className="dp-st"><i style={{ background: STATUS_COLOR[task.status] }} />{TASK_STATUS[task.status]}</span>
                       <span className={`dp-title ${task.status === "done" ? "done" : ""}`}>{task.title}</span>
                       {task.dueDate && <span className={`dp-due ${lt ? "late" : "muted"}`}>{shortDate(task.dueDate)}{lt && " · en retard"}</span>}
-                      <button type="button" className="ib2" title="Retirer la dépendance" aria-label={`Retirer la dépendance « ${task.title} »`} onClick={() => removeDependency(dep)}><Icon name="close" size={16} /></button>
+                      {canEdit && <button type="button" className="ib2" title="Retirer la dépendance" aria-label={`Retirer la dépendance « ${task.title} »`} onClick={() => removeDependency(dep)}><Icon name="close" size={16} /></button>}
                     </li>
                   );
                 })}
@@ -94,7 +96,7 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
           <button className="ghost" onClick={() => setAdding(false)}>Annuler</button>
         </div>
       ) : (
-        <button type="button" className="add-dash" disabled={!ready} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Ajouter une dépendance</button>
+        canEdit && <button type="button" className="add-dash" disabled={!ready} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Ajouter une dépendance</button>
       )}
     </div>
   );

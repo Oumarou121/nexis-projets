@@ -10,6 +10,7 @@ import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
 import GlobalSearch from "./GlobalSearch.jsx";
+import { PermsContext, featureOn } from "./perms.js";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
 
@@ -65,6 +66,9 @@ export default function App() {
   }
 
   const orgName = access?.organizations?.find((o) => o.organizationId === orgId)?.organizationSlug ?? "";
+  const orgAccess = access?.organizations?.find((o) => o.organizationId === orgId);
+  const has = (p) => !!access?.platformAdmin || !!orgAccess?.permissions?.includes(p);
+  const perms = { canCreate: has("projects.create"), canEdit: has("projects.update"), canDelete: has("projects.delete") };
   const inProject = !!project;
   const sendCmd = (name) => setCmd({ name, n: Date.now() });
 
@@ -75,7 +79,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <PermsContext.Provider value={perms}>
       <nav className="nav" aria-label="Menu principal">
         <span className="brand"><span className="logo" /><span className="t">NEXIS Projets</span></span>
         {orgId && (
@@ -89,7 +93,7 @@ export default function App() {
                 label="Configuration"
                 items={[
                   { label: "Paramètres du projet", icon: "gear", onClick: () => sendCmd("settings") },
-                  { label: "Jalons", icon: "flag", onClick: () => sendCmd("milestones") },
+                  ...(featureOn(project, "milestones") ? [{ label: "Jalons", icon: "flag", onClick: () => sendCmd("milestones") }] : []),
                 ]}
               />
             )}
@@ -116,7 +120,7 @@ export default function App() {
       <main className="page">
         {err && <p className="error">{err}</p>}
         {orgId && project ? (
-          <Tasks key={project.id} orgId={orgId} project={project} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
+          <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (
           <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} ready={people.ready} onShowMine={() => setTab("mine")} /></div>
         ) : orgId && tab === "activity" ? (
@@ -131,6 +135,6 @@ export default function App() {
           access && <p className="muted content">Aucune organisation active pour ce compte.</p>
         )}
       </main>
-    </>
+    </PermsContext.Provider>
   );
 }

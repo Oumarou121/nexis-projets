@@ -12,6 +12,7 @@ import TaskDetail from "./TaskDetail.jsx";
 import TaskSearch, { applySearch, groupTasks } from "./TaskSearch.jsx";
 import { CalendarSkeleton, KanbanSkeleton, ListSkeleton, PlanSkeleton, ReportsSkeleton, Skel } from "./Skeleton.jsx";
 import TaskSidebar from "./TaskSidebar.jsx";
+import { featureOn, usePerms } from "./perms.js";
 import { Avatar, DateField, Icon, PriorityStar, StatusPill } from "./ui.jsx";
 import { PRIORITY, TASK_STATUS, isLate, memberName, projectColor, shortDate } from "./labels.js";
 
@@ -30,8 +31,13 @@ const EMPTY = { title: "", description: "", labels: "", assigneeId: "", priority
 const parseLabels = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Tâches d'un projet. `members` vient de NEXIS Identity ; `canAssign` = droit de les lister. */
-export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, openTaskId = null, onBack, onNav }) {
+export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, openTaskId = null, onProjectChange, onBack, onNav }) {
   const [project, setProject] = useState(initial);
+  const { canEdit } = usePerms();
+  const depsOn = featureOn(project, "dependencies");
+  const msOn = featureOn(project, "milestones");
+  // Remonte les changements du projet (paramètres, nom…) : le menu Configuration en dépend.
+  useEffect(() => { onProjectChange?.(project); }, [project]); // eslint-disable-line react-hooks/exhaustive-deps
   const [list, setList] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState(EMPTY);
@@ -56,7 +62,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   // Commandes du menu Configuration (Paramètres, Jalons).
   useEffect(() => {
     if (command?.name === "settings") setShowSettings(true);
-    if (command?.name === "milestones") setShowMilestones(true);
+    if (command?.name === "milestones" && msOn) setShowMilestones(true);
   }, [command]);
   const who = (id) => members.find((m) => m.userId === id);
 
@@ -68,11 +74,11 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   const [deps, setDeps] = useState([]);
   const depsBase = `/api/organizations/${orgId}/projects/${project.id}/dependencies`;
   useEffect(() => {
-    if (view !== "gantt" || openId) return;
+    if (view !== "gantt" || openId || !depsOn) return;
     let alive = true;
     api(depsBase).then((d) => alive && setDeps(d)).catch(() => alive && setDeps([]));
     return () => { alive = false; };
-  }, [view, openId, depsBase]);
+  }, [view, openId, depsBase, depsOn]);
 
   async function onCreate(e) {
     e.preventDefault();
@@ -241,7 +247,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         {canAssign ? (
           <div className="ass">
             <Avatar member={who(t.assigneeId)} size={24} />
-            <select aria-label="Assignée à" value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
+            <select aria-label="Assignée à" disabled={!canEdit} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
               <option value="">Non assignée</option>
               {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
             </select>
@@ -255,7 +261,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       <td><StatusPill status={t.status} onChange={(s) => move(t, s)} /></td>
       <td className="acts">
         <button className="icon-btn" onClick={() => setSidebarTask(t)} aria-label={`Aperçu rapide ${t.title}`} title="Aperçu rapide"><Icon name="expand" /></button>
-        <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>
+        {canEdit && <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>}
       </td>
     </tr>
   );
@@ -272,6 +278,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         task={openTask}
         members={members}
         canAssign={canAssign}
+        features={project.settings ?? {}}
         pager={at >= 0 ? { index: at, total: shown.length, onPrev: () => go(-1), onNext: () => go(1) } : null}
         onClose={closeDetail}
         onProjects={onBack}
@@ -305,13 +312,13 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
             })}
           </span>
         </div>
-        <button className="pj-new" onClick={() => setCreating(true)}><Icon name="plus" size={18} /> Nouvelle tâche</button>
+        {canEdit && <button className="pj-new" onClick={() => setCreating(true)}><Icon name="plus" size={18} /> Nouvelle tâche</button>}
       </div>
       <ProjectHeader orgId={orgId} project={project} onChange={setProject} onDeleted={onBack} />
       <div className="pg-tools">
         <div className="pg-sec" role="group" aria-label="Sections du projet">
           <button type="button" className="on" aria-current="page">Tâches</button>
-          <button type="button" onClick={() => setShowMilestones(true)}>Jalons</button>
+          {msOn && <button type="button" onClick={() => setShowMilestones(true)}>Jalons</button>}
           <button type="button" onClick={() => onNav?.("dashboard")}>Tableau de bord</button>
         </div>
         <div className="cp-mid"><TaskSearch projectId={project.id} state={search} onChange={setSearch} /></div>
@@ -337,9 +344,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       {busy ? (
         view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />
       ) : view === "kanban" ? (
-        <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={move} onChange={change} onQuickAdd={quickAdd} onRemove={remove} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
-        <Gantt tasks={shown} dependencies={deps} members={members} onMove={move} onChange={change} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Gantt tasks={shown} dependencies={depsOn ? deps : []} members={members} onMove={move} onChange={canEdit ? change : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "calendar" ? (
         <Calendar tasks={shown} members={members} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "reports" ? (

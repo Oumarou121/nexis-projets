@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
 import { ColorPicker, Icon } from "./ui.jsx";
@@ -328,6 +329,7 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
   const [list, setList] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
+  const { canCreate } = usePerms();
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [view, setViewState] = useState(getView);
@@ -360,7 +362,7 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
             {stats.late > 0 && " à reprendre."}
           </p>}
         </div>
-        <button className="pj-new" onClick={() => setCreating(true)}>Nouveau projet</button>
+        {canCreate && <button className="pj-new" onClick={() => setCreating(true)}>Nouveau projet</button>}
       </div>
 
       <div className="pj-bar0">
@@ -380,12 +382,12 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
       {busy && (view === "cards" ? <ProjectCardsSkeleton /> : <ProjectTimelineSkeleton />)}
       {!busy && shown.length > 0 && view === "timeline" && <Timeline list={shown} members={members} onOpen={onOpen} />}
       {!busy && shown.length > 0 && view === "list" && <ListView list={shown} members={members} onOpen={onOpen} />}
-      {!busy && (shown.length > 0 || (loaded && !err && !needle)) && view === "cards" && <CardsView list={shown} members={members} onOpen={onOpen} onCreate={() => setCreating(true)} canCreate />}
+      {!busy && (shown.length > 0 || (loaded && !err && !needle)) && view === "cards" && <CardsView list={shown} members={members} onOpen={onOpen} onCreate={() => setCreating(true)} canCreate={canCreate} />}
 
       {!busy && loaded && !err && shown.length === 0 && view !== "cards" && (
         <div className="empty">
           <b>{list.length ? "Aucun résultat" : "Aucun projet pour l'instant"}</b>
-          {list.length ? "Essayez un autre mot-clé." : "Cliquez sur « Nouveau projet » pour créer le premier."}
+          {list.length ? "Essayez un autre mot-clé." : (canCreate ? "Cliquez sur « Nouveau projet » pour créer le premier." : "Aucun projet pour le moment.")}
         </div>
       )}
 

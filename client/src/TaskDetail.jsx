@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePerms } from "./perms.js";
 import { api, download, upload } from "./api.js";
 import { CommentsSkeleton, RowsSkeleton } from "./Skeleton.jsx";
 import LabelChips from "./LabelChips.jsx";
@@ -39,7 +40,8 @@ const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeti
  * champs sur deux colonnes, onglets, puis la discussion.
  * `pager` = { index, total, onPrev, onNext } pour passer d'une tâche à l'autre.
  */
-export default function TaskDetail({ orgId, projectId, projectName, task, members, canAssign, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+export default function TaskDetail({ orgId, projectId, projectName, task, members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+  const { canEdit } = usePerms();
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
   const [labelText, setLabelText] = useState("");
@@ -300,7 +302,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             const past = i < all.findIndex(([k]) => k === task.status);
             const tip = d ? `${cur ? "Dans cette étape depuis le" : "Dernière entrée le"} ${fmt(d.since)} · total ${fmtDuration(d.ms)}` : undefined;
             return (
-              <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
+              <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} disabled={!canEdit} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
                 {past ? <Icon name="check" size={15} /> : <b>{i + 1}</b>}
                 <span>{l}</span>
                 {d && <small className="dur">{fmtDuration(d.ms)}</small>}
@@ -313,7 +315,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           <div className="row" style={{ flexWrap: "nowrap", alignItems: "center" }}>
             <PriorityStar priority={task.priority} onChange={async (priority) => setErr((await onChangeTask(task, { priority })) ?? "")} />
             <h1 className={task.status === "done" ? "done" : ""}>
-              <input aria-label="Titre de la tâche" value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+              <input aria-label="Titre de la tâche" readOnly={!canEdit} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             </h1>
           </div>
           <div className="fgrid">
@@ -324,7 +326,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                   {canAssign ? (
                     <>
                       <Avatar member={members.find((m) => m.userId === task.assigneeId)} size={24} />
-                      <select aria-label="Responsable" value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
+                      <select aria-label="Responsable" disabled={!canEdit} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
                         <option value="">Non assignée</option>
                         {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                       </select>
@@ -335,8 +337,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
               <div className="frow">
                 <label>Étiquettes</label>
                 <div className="fv wrap">
-                  <LabelChips labels={task.labels} onRemove={(l) => saveLabels((task.labels ?? []).filter((x) => x !== l))} />
-                  {addingLabel ? (
+                  <LabelChips labels={task.labels} onRemove={canEdit ? (l) => saveLabels((task.labels ?? []).filter((x) => x !== l)) : undefined} />
+                  {!canEdit ? null : addingLabel ? (
                     <form onSubmit={addLabel} className="lb-form">
                       <input
                         autoFocus
@@ -373,16 +375,16 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 <div className="seg2" role="radiogroup" aria-labelledby="prio-l">
                   {Object.entries(PRIORITY).map(([v, l]) => (
                     <label key={v}>
-                      <input type="radio" name="task-prio" value={v} checked={task.priority === v} onChange={async () => setErr((await onChangeTask(task, { priority: v })) ?? "")} />
+                      <input type="radio" name="task-prio" disabled={!canEdit} value={v} checked={task.priority === v} onChange={async () => setErr((await onChangeTask(task, { priority: v })) ?? "")} />
                       <span>{l}</span>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="frow">
+              <div className="frow" style={features.milestones ? undefined : { display: "none" }}>
                 <label htmlFor="task-ms">Jalon</label>
                 <span className="fv">
-                  <span className="switch"><input id="task-ms" type="checkbox" checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
+                  <span className="switch"><input id="task-ms" type="checkbox" disabled={!canEdit} checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
                   <span className="muted small">Marquer comme étape clé</span>
                 </span>
               </div>
@@ -392,8 +394,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           <div className="tabs" role="tablist">
             <button className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
             <button className={tab === "subtasks" ? "on" : ""} onClick={() => setTab("subtasks")}>Sous-tâches{subtasks.length > 0 && <i>{subtasks.filter((x) => x.status === "done").length}/{subtasks.length}</i>}</button>
-            <button className={tab === "dependencies" ? "on" : ""} onClick={() => setTab("dependencies")}>Dépendances</button>
-            <button className={tab === "timesheets" ? "on" : ""} onClick={() => setTab("timesheets")}>Feuilles de temps</button>
+            {features.dependencies && <button className={tab === "dependencies" ? "on" : ""} onClick={() => setTab("dependencies")}>Dépendances</button>}
+            {features.timesheets && <button className={tab === "timesheets" ? "on" : ""} onClick={() => setTab("timesheets")}>Feuilles de temps</button>}
             <button className={tab === "attachments" ? "on" : ""} onClick={() => setTab("attachments")}>Pièces jointes{files?.length > 0 && <i>{files.length}</i>}</button>
             <button className={tab === "activities" ? "on" : ""} onClick={() => setTab("activities")}>Activités{activities?.length > 0 && <i>{activities.length}</i>}</button>
           </div>
@@ -414,32 +416,32 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 {subtasks.map((s) => (
                   <li key={s.id}>
                     <label>
-                      <input type="checkbox" checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
+                      <input type="checkbox" disabled={!canEdit} checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
                       <span className="bx"><Icon name="check" size={14} /></span>
                       <span className={s.status === "done" ? "done" : ""}>{s.title}</span>
                     </label>
-                    <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>
+                    {canEdit && <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>}
                   </li>
                 ))}
               </ul>
             ) : (
               <div className="empty-tab"><Icon name="subtask" size={22} /><b>Aucune sous-tâche</b><span>Découpez cette tâche en petites étapes à cocher.</span></div>
             )}
-            <form onSubmit={addSub} className="addrow">
+            {canEdit && <form onSubmit={addSub} className="addrow">
               <input aria-label="Nouvelle sous-tâche" placeholder="Ajouter une sous-tâche…" value={subTitle} onChange={(e) => setSubTitle(e.target.value)} />
               <button className="go" disabled={!subTitle.trim()}>Ajouter</button>
-            </form>
+            </form>}
           </div>
 
-          <div className={`tab-content ${tab === "dependencies" ? "on" : ""}`}>
+          {features.dependencies && (<div className={`tab-content ${tab === "dependencies" ? "on" : ""}`}>
             <TaskDependencies orgId={orgId} projectId={projectId} taskId={task.id} />
-          </div>
+          </div>)}
 
-          <div className={`tab-content ${tab === "timesheets" ? "on" : ""}`}>
+          {features.timesheets && (<div className={`tab-content ${tab === "timesheets" ? "on" : ""}`}>
             <Timesheets orgId={orgId} projectId={projectId} taskId={task.id} members={members} />
-          </div>
+          </div>)}
 
-          <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...dnd}>
+          <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...(canEdit ? dnd : {})}>
             {files && files.length > 0 && (
               <ul className="fl">
                 {files.map((f) => {
@@ -453,7 +455,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                         <span className="fs">{fileSize(f.size)}{canAssign && f.uploadedBy ? ` · ${nameOf(f.uploadedBy)}` : ""}</span>
                       </div>
                       <button type="button" className="ib2" aria-label={`Télécharger ${f.fileName}`} onClick={() => openFile(f)}><Icon name="download" size={16} /></button>
-                      {f.canDelete && <button type="button" className="ib2" aria-label={`Supprimer ${f.fileName}`} onClick={() => removeFile(f)}><Icon name="trash" size={16} /></button>}
+                      {canEdit && f.canDelete && <button type="button" className="ib2" aria-label={`Supprimer ${f.fileName}`} onClick={() => removeFile(f)}><Icon name="trash" size={16} /></button>}
                     </li>
                   );
                 })}
@@ -461,7 +463,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             )}
             {files && files.length === 0 && <div className="empty-tab"><Icon name="clip" size={22} /><b>Aucune pièce jointe</b><span>Ajoutez des documents, images ou maquettes.</span></div>}
             {!files && !err && <RowsSkeleton rows={2} h={64} label="Chargement des pièces jointes" />}
-            {(files?.length ?? 0) < MAX_FILES ? (
+            {!canEdit ? null : (files?.length ?? 0) < MAX_FILES ? (
               <label className={`drop ${uploading ? "busy" : ""} ${dragging ? "over" : ""}`}>
                 <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
                 <Icon name="clip" size={18} />
@@ -483,7 +485,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 <h3>Activités planifiées</h3>
                 <p className="muted small">{activities ? (activities.length === 0 ? "Aucune activité" : `${activities.filter((x) => !x.done).length} à faire · ${activities.filter((x) => x.done).length} terminée(s)`) : "Chargement…"}</p>
               </div>
-              <button className="pj-ok ta-add" onClick={() => setScheduling(true)}><Icon name="plus" size={16} /> Planifier une activité</button>
+              {canEdit && <button className="pj-ok ta-add" onClick={() => setScheduling(true)}><Icon name="plus" size={16} /> Planifier une activité</button>}
             </div>
             {scheduling && (
               <div className="ta-form">
@@ -518,6 +520,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                     <button
                       type="button"
                       className={`ta-check ${a.done ? "on" : ""}`}
+                      disabled={!canEdit}
                       role="checkbox"
                       aria-checked={a.done}
                       aria-label={a.done ? "Marquer comme à faire" : "Marquer comme terminée"}
@@ -533,7 +536,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                       </div>
                     </div>
                     {a.assigneeId ? <Avatar name={nameOf(a.assigneeId)} size={28} /> : <Avatar name="" size={28} />}
-                    <button type="button" className="icon-btn ta-del" aria-label="Supprimer l'activité" onClick={() => removeActivity(a)}><Icon name="trash" size={16} /></button>
+                    {canEdit && <button type="button" className="icon-btn ta-del" aria-label="Supprimer l'activité" onClick={() => removeActivity(a)}><Icon name="trash" size={16} /></button>}
                   </li>
                 );
               })}
@@ -553,13 +556,13 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
         <aside className="tp-chat" aria-label="Discussion">
         <h3>Discussion {comments && <span className="tc-count">{comments.length}</span>}</h3>
         {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
-        <form onSubmit={send} className="composer">
+        {canEdit && <form onSubmit={send} className="composer">
           <textarea rows={2} placeholder="Écrire un commentaire…" aria-label="Écrire un commentaire" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && send(e)} />
           <div className="row">
             <span className="muted small" style={{ marginRight: "auto" }}>{text.length > 3500 ? `${text.length} / 4000` : "Ctrl + Entrée pour envoyer"}</span>
             <button className="pj-ok" disabled={busy || !text.trim()}>Commenter</button>
           </div>
-        </form>
+        </form>}
         <div className="tc-feed">
           {groupByDay((comments ?? []).slice().reverse()).map((g) => (
             <section key={g.k} className="tc-day">
@@ -571,7 +574,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                     <header>
                       <strong>{nameOf(c.authorId)}</strong>
                       <span className="muted small">{hour(c.createdAt)}</span>
-                      {c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
+                      {canEdit && c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
                     </header>
                     <p className="comment-body">{c.body}</p>
                   </div>
