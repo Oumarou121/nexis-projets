@@ -4,7 +4,7 @@ import { Avatar, Icon } from "./ui.jsx";
 import { DashboardSkeleton } from "./Skeleton.jsx";
 import { PROJECT_STATUS, STATUS_COLOR, TASK_STATUS, memberName } from "./labels.js";
 
-const PROJECT_COLOR = { planned: "#9ca3af", active: "#22c55e", on_hold: "#f59e0b", done: "#3b82f6" };
+const PROJECT_COLOR = { planned: "var(--st-todo)", active: "var(--pri)", on_hold: "var(--st-review)", done: "var(--st-done)" };
 
 /** Carte « répartition » : barre segmentée + une ligne par statut (valeur et part). */
 function Breakdown({ title, hint, labels, counts, colors }) {

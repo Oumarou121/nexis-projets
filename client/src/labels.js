@@ -24,8 +24,8 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const fileSize = (n) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${Math.round(n / 1024)} Ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`);
 
 /** Couleur de statut (point, pastille, barre de progression). */
-export const STATUS_COLOR = { todo: "#9ca3af", in_progress: "#3b82f6", review: "#f59e0b", done: "#22c55e" };
-export const PRIORITY_COLOR = { low: "#9ca3af", medium: "#3b82f6", high: "#f59e0b", urgent: "#ef4444" };
+export const STATUS_COLOR = { todo: "var(--st-todo)", in_progress: "var(--st-progress)", review: "var(--st-review)", done: "var(--st-done)" };
+export const PRIORITY_COLOR = { low: "var(--mut)", medium: "var(--st-progress)", high: "var(--warn)", urgent: "var(--bad)" };
 
 /** « 12 oct. » ou « Demain » : date courte et lisible. */
 export function shortDate(iso) {

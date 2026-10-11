@@ -85,7 +85,7 @@ export default function App() {
   return (
     <PermsContext.Provider value={perms}>
       <nav className="nav" aria-label="Menu principal">
-        <span className="brand"><img className="logo" src={logo} alt="" width="58" height="34" /><span className="t">Projets</span></span>
+        <span className="brand"><img className="logo" src={logo} alt="" width="58" height="34" /><span className="t">NEXIS Projets</span></span>
         {loading && (
           <div className="nav-scroll nav-ph" aria-hidden="true">
             {["Projets", "Mes tâches", "Tableau de bord", "Activité"].map((l) => <button key={l} className="nl" tabIndex={-1}>{l}</button>)}

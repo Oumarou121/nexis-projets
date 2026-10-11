@@ -119,7 +119,7 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
         ) : (
           <>
             {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
-            {notice && <p className="muted small" role="status" style={{ padding: 0, color: "var(--warn, #b45309)" }}>{notice}</p>}
+            {notice && <p className="muted small" role="status" style={{ padding: 0, color: "var(--warn)" }}>{notice}</p>}
             <section className="set-box">
               <h5 className="set-h">Couleur du projet</h5>
               <ColorPicker name="set-color" disabled={saving || !canEdit} value={colorIdx} onChange={saveColor} />

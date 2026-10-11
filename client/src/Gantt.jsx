@@ -12,7 +12,7 @@ const fromISO = (iso) => {
 /** Couleur d'une barre : en retard = rouge, sinon selon le statut. */
 function barColor(t) {
   if (isLate(t)) return "var(--bad)";
-  return { done: "#12a678", in_progress: "#5b7cf0", review: "#e0962a", todo: "#8a90ab" }[t.status] ?? "#8a90ab";
+  return { done: "var(--st-done)", in_progress: "var(--st-progress)", review: "var(--st-review)", todo: "var(--st-todo)" }[t.status] ?? "var(--st-todo)";
 }
 
 const ROW_H = 34;
@@ -162,7 +162,7 @@ export default function Gantt({ tasks, dependencies = [], members, onChange, onO
         <button type="button" className="pl-today" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>Aujourd'hui</button>
         <strong className="plan-month">{label}</strong>
         <ul className="plan-legend" aria-label="Légende">
-          {[["todo", "#8a90ab"], ["in_progress", "#5b7cf0"], ["review", "#e0962a"], ["done", "#12a678"], ["late", "var(--bad)"]].map(([k, c]) => (
+          {[["todo", "var(--st-todo)"], ["in_progress", "var(--st-progress)"], ["review", "var(--st-review)"], ["done", "var(--st-done)"], ["late", "var(--bad)"]].map(([k, c]) => (
             <li key={k}><i style={{ background: c }} />{k === "late" ? "En retard" : TASK_STATUS[k]}</li>
           ))}
         </ul>
@@ -234,7 +234,7 @@ export default function Gantt({ tasks, dependencies = [], members, onChange, onO
           {arrows.length > 0 && (
             <svg className="pl-arrows" aria-hidden="true">
               <defs>
-                {[["n", "var(--mut)"], ["bad", "var(--bad)"], ["hl", "var(--teal)"]].map(([k, c]) => (
+                {[["n", "var(--mut)"], ["bad", "var(--bad)"], ["hl", "var(--pri)"]].map(([k, c]) => (
                   <marker key={k} id={`pl-head-${k}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
                     <path d="M0 0.5 L7.5 4 L0 7.5 z" style={{ fill: c }} />
                   </marker>
