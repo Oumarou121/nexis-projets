@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db.js";
 import { requirePermission } from "../auth.js";
 import { unwrap } from "../util.js";
+import { excludeHidden, getScope } from "../access.js";
 
 // Monté sous /api/organizations/:orgId/dashboard : indicateurs de l'organisation.
 const router = Router({ mergeParams: true });
@@ -13,12 +14,17 @@ const today = () => {
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
   const orgId = req.params.orgId;
-  const projects = unwrap(await db.from("projects").select("id, status").eq("organization_id", orgId));
+  const scope = await getScope(req); // les projets privés cachés à l'appelant ne comptent dans aucun chiffre
+  const projects = unwrap(await excludeHidden(db.from("projects").select("id, status").eq("organization_id", orgId), "id", scope));
   const tasks = unwrap(
-    await db
-      .from("tasks")
-      .select("status, assignee_id, due_date, projects!inner(organization_id)")
-      .eq("projects.organization_id", orgId),
+    await excludeHidden(
+      db
+        .from("tasks")
+        .select("status, assignee_id, due_date, projects!inner(organization_id)")
+        .eq("projects.organization_id", orgId),
+      "project_id",
+      scope,
+    ),
   );
 
   const t0 = today();

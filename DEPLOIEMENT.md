@@ -94,13 +94,22 @@ Droits et isolation :
 - [ ] membre de B : ne voit aucune donnée de A ; appeler directement une URL de A avec son jeton répond 403.
 - [ ] Un projet de A ne s'ouvre pas via l'identifiant d'une autre organisation (404).
 
+Visibilité des projets (migration `20261011090000_project_members.sql` exécutée, lire ses notes avant) :
+- [ ] Le résultat de la requête de contrôle en fin de migration liste bien les projets qui doivent être privés (ceux dont le réglage « privé » avait été posé auparavant) ; ajouter leurs membres depuis Paramètres → Membres.
+- [ ] Créer un projet : son créateur apparaît dans Paramètres → Membres. Le passer en **privé** : le cadenas apparaît.
+- [ ] Avec le compte « user » de A (non membre) : le projet privé n'apparaît ni dans la liste, ni dans la recherche, ni dans le tableau de bord, ni dans « Mes tâches », ni dans l'activité ; ouvrir son URL directement donne « Projet introuvable ».
+- [ ] Ajouter ce compte aux membres : il voit le projet et ses tâches. Le retirer : il le perd de vue.
+- [ ] Le manager de A (qui n'a pas `projects.delete`) ne voit pas non plus un projet privé dont il n'est pas membre ; l'admin de A le voit sans en être membre.
+- [ ] Assigner une tâche d'un projet privé à un non-membre est refusé ; la liste « Responsable » ne propose que les membres.
+- [ ] Repasser le projet en interne : tout le monde le revoit, y compris son historique dans l'activité.
+
 Session :
 - [ ] Vider le stockage de session de l'onglet du module puis recharger : retour par NEXIS puis réouverture, sans boucle.
 - [ ] Laisser le jeton expirer : la prochaine action renvoie vers NEXIS et revient.
 - [ ] Désactiver le module pour l'organisation : le lien disparaît de NEXIS.
 
 ## 7. Avant d'ouvrir à l'équipe
-- [ ] `npm test` passe (45 tests) sur la version déployée.
+- [ ] `npm test` passe (77 tests) sur la version déployée.
 - [ ] Aucun fichier `.env` dans le dépôt (le `.gitignore` les exclut, à confirmer avec `git status`).
 - [ ] La clé service_role n'apparaît ni dans `client/`, ni dans `client/dist`, ni dans les logs.
 - [ ] Qui reçoit les alertes quand le serveur tombe, et où sont lus les logs : à décider.
@@ -113,4 +122,5 @@ Session :
 - Les étiquettes sont du texte libre par tâche (pas de catalogue d'organisation) : renommer une étiquette demande de la modifier sur chaque tâche.
 - Les sous-tâches (un seul niveau) comptent dans le tableau de bord et dans « Mes tâches » comme des tâches à part entière.
 - Tableau de bord, « Mes tâches » et recherche filtrent ou calculent sur toutes les données de l'organisation à chaque appel : correct pour une équipe, à optimiser pour de gros volumes.
-- Les tests automatiques couvrent l'authentification, les droits et la validation. Les parcours qui lisent ou écrivent en base ne sont couverts que par la section 6.
+- Les tests automatiques s'appuient sur une base en mémoire qui imite le client Supabase : ils vérifient la logique du serveur (visibilité, droits, validation), pas les requêtes réelles sur PostgREST. La section 6 reste nécessaire une fois sur la vraie base.
+- Visibilité : « Public » (comptes portail) n'existe pas. Un projet privé dont le dernier membre est parti n'est visible que des responsables. Les personnes retirées d'un projet privé gardent leurs tâches assignées (signalées dans l'onglet Membres) mais ne les voient plus.

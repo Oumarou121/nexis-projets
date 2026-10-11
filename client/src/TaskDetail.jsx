@@ -40,7 +40,7 @@ const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeti
  * champs sur deux colonnes, onglets, puis la discussion.
  * `pager` = { index, total, onPrev, onNext } pour passer d'une tâche à l'autre.
  */
-export default function TaskDetail({ orgId, projectId, projectName, task, members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+export default function TaskDetail({ orgId, projectId, projectName, task, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
   const { canEdit } = usePerms();
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
@@ -328,7 +328,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                       <Avatar member={members.find((m) => m.userId === task.assigneeId)} size={24} />
                       <select aria-label="Responsable" disabled={!canEdit} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
                         <option value="">Non assignée</option>
-                        {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+                        {assignable(task.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                       </select>
                     </>
                   ) : task.assigneeId ? <><Avatar name="Assignée" size={24} />Assignée</> : <span className="muted">Non assignée</span>}
@@ -501,7 +501,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                     {canAssign && <div><label>Assigné à</label>
                       <select value={activityForm.assigneeId} onChange={(e) => setActivityForm({ ...activityForm, assigneeId: e.target.value })}>
                         <option value="">Non assignée</option>
-                        {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+                        {assignable(activityForm.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                       </select>
                     </div>}
                   </div>

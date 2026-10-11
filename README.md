@@ -22,7 +22,7 @@ React (Vite) + Node.js (Express) + un projet Supabase dédié aux données.
   `20261008040000_task_comments.sql`, `20261008050000_task_labels_subtasks.sql`,
   `20261008060000_task_attachments.sql`, `20261008070000_task_activities.sql`,
   `20261008080000_project_settings.sql`, `20261008090000_task_timesheets.sql`,
-  `20261008100000_task_dependencies.sql`, `20261008110000_task_milestones.sql`, `20261008120000_task_status_history.sql` (reprend l'historique depuis le journal d'activité ; à exécuter une seule fois) (dossier `supabase/migrations/`).
+  `20261008100000_task_dependencies.sql`, `20261008110000_task_milestones.sql`, `20261008120000_task_status_history.sql` (reprend l'historique depuis le journal d'activité ; à exécuter une seule fois), `20261011090000_project_members.sql` (visibilité Interne/Privé et membres par projet : lire ses notes avant de l'exécuter, une seule fois) (dossier `supabase/migrations/`).
   Seul le serveur (service_role) y accède ; RLS activée sans policy, bucket privé.
 
 ## Démarrage
@@ -31,10 +31,25 @@ React (Vite) + Node.js (Express) + un projet Supabase dédié aux données.
 3. `npm run dev` → API :4000, client :5173, puis ouvrir le module depuis NEXIS.
 
 ## Tests
-`npm test` : 45 tests (authentification, droits par rôle, isolation entre organisations, validation).
-Ils n'ont besoin d'aucun service : un faux NEXIS Identity est lancé par le test, et chaque cas
-est refusé ou invalidé avant l'accès à la base. Les parcours qui lisent/écrivent la base
-(création, filtres, tableau de bord, journal) se vérifient avec `DEPLOIEMENT.md`, section 6.
+`npm test` : 77 tests (authentification, droits par rôle, isolation entre organisations, validation,
+visibilité des projets et membres). Ils n'ont besoin d'aucun service : un faux NEXIS Identity est lancé
+par le test et la base est remplacée par une base en mémoire (`server/test/fakeDb.js`, branchée avec
+`--experimental-test-module-mocks`, déjà dans `npm test`). `visibility.test.js` vérifie qu'un non-membre ne voit
+un projet privé ni dans la liste, ni par son identifiant, ni par ses tâches, commentaires, pièces jointes, activités,
+feuilles de temps, dépendances, historique, ni par la recherche, le tableau de bord, « Mes tâches » et le journal.
+La base en mémoire imite le client Supabase : elle ne remplace pas le test sur la vraie base (`DEPLOIEMENT.md`, section 6).
+
+## Visibilité des projets et membres
+- Chaque projet est **interne** (tous les utilisateurs de l'organisation ayant `projects.read`) ou **privé** (réglage `projects.visibility`).
+  « Public » (comptes portail) n'est pas encore pris en charge : le serveur le refuse.
+- Un projet **privé** est vu par : ses **membres** (table `project_members`), les détenteurs de `projects.delete`
+  dans l'organisation et les administrateurs plateforme. Pour un autre utilisateur, il n'existe pas (404, jamais 403).
+  Le droit « voir tous les projets privés » est la constante `FULL_ACCESS_PERMISSION` de `server/src/access.js`.
+- Le créateur d'un projet en devient membre. Celui qui passe un projet en privé en devient membre aussi.
+  On ne retire pas le dernier membre d'un projet privé. Une tâche d'un projet privé ne s'assigne qu'à un membre.
+- Une seule garde (`projectGuard`, `server/src/access.js`) couvre tout ce qui est sous `/projects/:projectId` ;
+  les routes qui portent sur toute l'organisation (liste, recherche, tableau de bord, « Mes tâches », journal) filtrent via `getScope`.
+- Journal : `activity_log.restricted` marque les entrées d'un projet privé ; il suit la visibilité du projet et survit à sa suppression.
 
 ## Mise en production
 Voir `DEPLOIEMENT.md`.
@@ -53,6 +68,8 @@ Voir `DEPLOIEMENT.md`.
 - `GET …/projects/:projectId/dependencies` (toutes les dépendances du projet, pour les flèches du Gantt ; lecture seule)
 - `GET …/tasks/:taskId/status-history` (entrées de la tâche dans chaque statut, pour les durées de la barre de statut ; lecture seule)
 - `GET /api/organizations/:orgId/members` (membres affectables, relais de NEXIS Identity)
+- `GET …/projects/:projectId/members` (membres du projet, `me`, personnes assignées sans accès) · `POST …/members` (`{ userId }`, la personne doit être membre actif de l'organisation : exige `users.read` dans Identity) · `DELETE …/members/:userId`
+- `PATCH …/projects/:id` accepte `visibility` (`internal` ou `private`) ; la clé `visibility` de `settings` est ignorée.
 
 ## Droits
 - Projets : lire `projects.read`, créer `projects.create`, modifier `projects.update`, supprimer `projects.delete`.
@@ -60,6 +77,7 @@ Voir `DEPLOIEMENT.md`.
 - Commentaires : lire `projects.read`, commenter `projects.update` ; supprimer le sien (`projects.update`) ou n'importe lequel (`projects.delete`).
 - Pièces jointes : lister et télécharger `projects.read`, envoyer `projects.update` ; supprimer le sien (`projects.update`) ou n'importe lequel (`projects.delete`).
 - Activités : lire `projects.read`, créer/modifier/supprimer `projects.update`.
+- Membres d'un projet : lire `projects.read` ; ajouter / retirer `projects.update` (ajouter exige aussi `users.read`). Voir un projet privé : être membre, ou avoir `projects.delete`, ou être administrateur plateforme.
 - Feuilles de temps : lire `projects.read`, créer/modifier/supprimer `projects.update`.
 - « Mes tâches », tableau de bord, activité : lire `projects.read`.
 - Affecter une tâche : en plus, pouvoir lister les membres dans NEXIS Identity (`users.read`).

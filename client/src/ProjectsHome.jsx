@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
 import { ColorPicker, Icon } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS, memberName, projectColor, todayISO } from "./labels.js";
+import "./members.css";
 
 /* ---------- Utilitaires ---------- */
 const DAY = 86400000;
@@ -219,7 +220,7 @@ function Timeline({ list, members, onOpen }) {
         return (
           <div className="pj-tl-row" key={p.id}>
             <div className="pj-tl-lab">
-              <button type="button" className="pj-link" onClick={() => onOpen(p)}><i className="pj-dot" style={{ background: color }} />{p.name}</button>
+              <button type="button" className="pj-link" onClick={() => onOpen(p)}><i className="pj-dot" style={{ background: color }} />{p.name}{p.visibility === "private" && <Icon name="lock" size={13} className="pm-lock" aria-label="Projet privé" />}</button>
               <div className="pj-tl-meta">
                 <StatusPill status={p.status} />
                 <span className={dd.late ? "pj-late" : ""}>{p.dueDate ? `${dd.main} · ${dd.sub}` : dd.sub}</span>
@@ -271,7 +272,7 @@ function ListView({ list, members, onOpen }) {
         return (
           <article className="pj-lr" key={p.id}>
             <div>
-              <button type="button" className="pj-link" onClick={() => onOpen(p)}><i className="pj-dot" style={{ background: color }} />{p.name}</button>
+              <button type="button" className="pj-link" onClick={() => onOpen(p)}><i className="pj-dot" style={{ background: color }} />{p.name}{p.visibility === "private" && <Icon name="lock" size={13} className="pm-lock" aria-label="Projet privé" />}</button>
               {p.description && <div className="pj-ld">{p.description}</div>}
             </div>
             <div><StatusPill status={p.status} /></div>
@@ -303,7 +304,7 @@ function CardsView({ list, members, onOpen, onCreate, canCreate }) {
               <div className="pj-mono" style={{ background: color }} aria-hidden="true">{p.name[0].toUpperCase()}</div>
               <StatusPill status={p.status} />
             </div>
-            <button type="button" className="pj-cn" onClick={() => onOpen(p)}>{p.name}</button>
+            <button type="button" className="pj-cn" onClick={() => onOpen(p)}>{p.name}{p.visibility === "private" && <Icon name="lock" size={13} className="pm-lock" aria-label="Projet privé" />}</button>
             <p className="pj-cp">{p.description || "Aucune description"}</p>
             <div className="pj-mid">
               <div className="pj-ring" style={{ background: `conic-gradient(${color} ${pct * 3.6}deg, var(--pj-track) 0)` }}><span>{pct}%</span></div>

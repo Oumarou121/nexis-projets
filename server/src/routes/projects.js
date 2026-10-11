@@ -4,11 +4,13 @@ import { UUID_RE, httpError, requirePermission } from "../auth.js";
 import { DATE_RE, PRIORITIES, assertProject, unwrap } from "../util.js";
 import tasks from "./tasks.js";
 import projectDependencies from "./projectDependencies.js";
-import { changedFields, logActivity } from "../activity.js";
+import { changedFields, logActivity, syncActivityVisibility } from "../activity.js";
 import { pathsForTasks, removeFiles } from "../storage.js";
+import { VISIBILITIES, addMember, assigneesWithoutAccess, getScope, isFullAccess, projectGuard, removeMember } from "../access.js";
+import members from "./members.js";
 
 const STATUSES = ["planned", "active", "on_hold", "done"];
-const COLS = "id, organization_id, name, description, status, priority, due_date, settings, color, created_by, created_at, updated_at";
+const COLS = "id, organization_id, name, description, status, priority, due_date, settings, visibility, color, created_by, created_at, updated_at";
 
 const toApi = (r) => ({
   id: r.id,
@@ -19,6 +21,7 @@ const toApi = (r) => ({
   priority: r.priority,
   dueDate: r.due_date,
   settings: r.settings,
+  visibility: r.visibility ?? "internal",
   color: r.color,
   createdBy: r.created_by,
   createdAt: r.created_at,
@@ -56,9 +59,25 @@ function parse(body, { partial }) {
     if (body.color !== null && !(Number.isInteger(body.color) && body.color >= 0 && body.color <= 4)) throw httpError(400, "Couleur invalide (0 à 4).");
     out.color = body.color;
   }
+  if (has("visibility")) {
+    if (body.visibility === "public") {
+      throw httpError(400, "La visibilité « public » nécessite les comptes portail, qui ne sont pas encore pris en charge.");
+    }
+    if (!VISIBILITIES.includes(body.visibility)) throw httpError(400, "Visibilité invalide (internal ou private).");
+    out.visibility = body.visibility;
+  }
   if (has("settings")) {
-    if (body.settings !== null && typeof body.settings !== "object") throw httpError(400, "Paramètres invalides.");
-    out.settings = body.settings;
+    if (body.settings !== null && (typeof body.settings !== "object" || Array.isArray(body.settings))) {
+      throw httpError(400, "Paramètres invalides.");
+    }
+    // La visibilité n'est plus un paramètre libre : elle a sa propre colonne (champ « visibility »).
+    // On retire la clé si un ancien client l'envoie encore, au lieu de la stocker sans effet.
+    if (body.settings) {
+      const { visibility: _ignored, ...rest } = body.settings;
+      out.settings = rest;
+    } else {
+      out.settings = null;
+    }
   }
   return out;
 }
@@ -68,13 +87,17 @@ const checkId = (id) => {
 };
 
 const router = Router({ mergeParams: true });
+// Garde unique : tout ce qui est sous /:projectId (y compris les routes ajoutées plus tard) passe par elle.
+router.use("/:projectId", projectGuard);
+router.use("/:projectId/members", members);
 router.use("/:projectId/tasks", tasks);
 router.use("/:projectId/dependencies", projectDependencies);
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
+  const scope = await getScope(req);
   const rows = unwrap(
     await db.from("projects").select(COLS).eq("organization_id", req.params.orgId).order("created_at", { ascending: false }),
-  );
+  ).filter((r) => !scope.hiddenSet.has(r.id));
   // Chiffres affichés sur la page Projets : tâches principales (hors sous-tâches).
   // Avancement (terminées / total), retards, membres concernés et jalons à venir.
   // Un échec ne bloque pas la liste : les compteurs sont alors à 0.
@@ -136,6 +159,17 @@ router.post("/", requirePermission("projects.create"), async (req, res) => {
       .select(COLS)
       .single(),
   );
+  // Le créateur est le premier membre. Pour un projet privé, c'est indispensable : on annule la
+  // création plutôt que de laisser un projet que personne (hors responsables) ne peut ouvrir.
+  try {
+    await addMember(row.id, req.auth.userId, req.auth.userId);
+  } catch (e) {
+    if (row.visibility === "private") {
+      await db.from("projects").delete().eq("id", row.id);
+      throw e;
+    }
+    console.warn("[projets] créateur non inscrit comme membre :", e.message);
+  }
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "create", entityType: "project",
     entityId: row.id, projectId: row.id, label: row.name,
@@ -147,21 +181,41 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   checkId(req.params.id);
   const f = parse(req.body, { partial: true });
   if (Object.keys(f).length === 0) throw httpError(400, "Aucune modification.");
-  const row = unwrap(
-    await db
-      .from("projects")
-      .update({ ...f, updated_at: new Date().toISOString() })
-      .eq("id", req.params.id)
-      .eq("organization_id", req.params.orgId)
-      .select(COLS)
-      .maybeSingle(),
-  );
-  if (!row) throw httpError(404, "Projet introuvable.");
+  const becomesPrivate = f.visibility === "private" && req.project.visibility !== "private";
+  // Celui qui rend le projet privé ne doit pas s'en exclure : il en devient membre AVANT le changement
+  // (un responsable voit déjà tout, il n'a pas besoin d'être inscrit).
+  const added = becomesPrivate && !(await isFullAccess(req)) ? await addMember(req.params.id, req.auth.userId, req.auth.userId) : false;
+  // Si la modification n'aboutit pas, l'ajout fait juste avant est annulé : pas de membre « fantôme ».
+  const undoAdd = async () => {
+    if (added) await removeMember(req.params.id, req.auth.userId);
+  };
+  let row;
+  try {
+    row = unwrap(
+      await db
+        .from("projects")
+        .update({ ...f, updated_at: new Date().toISOString() })
+        .eq("id", req.params.id)
+        .eq("organization_id", req.params.orgId)
+        .select(COLS)
+        .maybeSingle(),
+    );
+  } catch (e) {
+    await undoAdd();
+    throw e;
+  }
+  if (!row) {
+    await undoAdd();
+    throw httpError(404, "Projet introuvable.");
+  }
+  if (f.visibility && f.visibility !== req.project.visibility) await syncActivityVisibility(row.id, row.visibility);
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "update", entityType: "project",
     entityId: row.id, projectId: row.id, label: row.name, details: changedFields(f),
   });
-  res.json(toApi(row));
+  // Passage en privé : les personnes qui ont une tâche en cours sans être membres la perdent de vue.
+  // Le client les signale ; la liste nominative est dans l'onglet Membres.
+  res.json(becomesPrivate ? { ...toApi(row), assigneesWithoutAccess: await assigneesWithoutAccess(row.id) } : toApi(row));
 });
 
 router.delete("/:id", requirePermission("projects.delete"), async (req, res) => {
@@ -178,6 +232,7 @@ router.delete("/:id", requirePermission("projects.delete"), async (req, res) => 
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "delete", entityType: "project",
     entityId: rows[0].id, projectId: rows[0].id, label: rows[0].name,
+    restricted: req.project.visibility === "private", // le projet n'existe plus : on fixe l'état d'avant
   });
   res.status(204).end();
 });

@@ -66,6 +66,21 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   }, [command]);
   const who = (id) => members.find((m) => m.userId === id);
 
+  // Projet privé : on n'assigne qu'à ses membres (le serveur l'exige aussi). L'assigné actuel reste proposé
+  // même s'il n'est plus membre, pour que la liste affiche sa valeur.
+  const isPrivate = project.visibility === "private";
+  const [memberIds, setMemberIds] = useState(null);
+  useEffect(() => {
+    if (!isPrivate) return setMemberIds(null);
+    let alive = true;
+    api(`/api/organizations/${orgId}/projects/${project.id}/members`)
+      .then((d) => alive && setMemberIds(d.members.map((m) => m.userId)))
+      .catch(() => alive && setMemberIds(null));
+    return () => { alive = false; };
+  }, [isPrivate, orgId, project.id]);
+  const memberSet = useMemo(() => (memberIds ? new Set(memberIds) : null), [memberIds]);
+  const assignable = (currentId) => (isPrivate && memberSet ? members.filter((m) => memberSet.has(m.userId) || m.userId === currentId) : members);
+
   const load = useCallback(() => api(base).then(setList).catch((e) => setErr(e.message)).finally(() => setLoaded(true)), [base]);
   useEffect(() => { load(); }, [load]);
 
@@ -212,7 +227,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   const assigneeSelect = (value, onChange, label) => (
     <select aria-label={label} value={value ?? ""} onChange={onChange}>
       <option value="">Non assignée</option>
-      {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+      {assignable(value).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
     </select>
   );
 
@@ -249,7 +264,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
             <Avatar member={who(t.assigneeId)} size={24} />
             <select aria-label="Assignée à" disabled={!canEdit} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
               <option value="">Non assignée</option>
-              {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+              {assignable(t.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
             </select>
           </div>
         ) : t.assigneeId ? <Avatar name="Assignée" size={24} /> : <span className="muted">—</span>}
@@ -277,6 +292,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         projectName={project.name}
         task={openTask}
         members={members}
+        assignable={assignable}
         canAssign={canAssign}
         features={project.settings ?? {}}
         pager={at >= 0 ? { index: at, total: shown.length, onPrev: () => go(-1), onNext: () => go(1) } : null}
@@ -418,7 +434,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
                     <label htmlFor="nt-who">Responsable <span>(facultatif)</span></label>
                     <select id="nt-who" value={form.assigneeId ?? ""} onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}>
                       <option value="">Non assignée</option>
-                      {members.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+                      {assignable(form.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                     </select>
                   </div>
                 )}
@@ -447,7 +463,16 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       )}
       {showSettings && (
         <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && setShowSettings(false)}>
-          <ProjectSettings orgId={orgId} project={project} onChange={setProject} onClose={() => setShowSettings(false)} />
+          <ProjectSettings
+            orgId={orgId}
+            project={project}
+            onChange={setProject}
+            onClose={() => setShowSettings(false)}
+            people={members}
+            canList={canAssign}
+            onMembersChange={setMemberIds}
+            onLeave={onBack}
+          />
         </div>
       )}
       {showMilestones && (

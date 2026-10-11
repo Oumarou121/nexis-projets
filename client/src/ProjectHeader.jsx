@@ -3,6 +3,7 @@ import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { DateField, Icon, Menu } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS } from "./labels.js";
+import "./members.css";
 
 /** Nom du projet, modifiable sur place (dans le fil d'Ariane du panneau de contrôle). */
 export function ProjectTitle({ orgId, project, onChange }) {
@@ -63,6 +64,7 @@ export default function ProjectHeader({ orgId, project, onChange, onDeleted }) {
   return (
     <>
       <div className="pmeta-row">
+        {project.visibility === "private" && <span className="pm-chip" title="Visible uniquement par ses membres, les responsables et les administrateurs"><Icon name="lock" size={13} />Privé</span>}
         <select aria-label="Statut du projet" disabled={!canEdit} value={project.status} onChange={(e) => save({ status: e.target.value })}>
           {Object.entries(PROJECT_STATUS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>

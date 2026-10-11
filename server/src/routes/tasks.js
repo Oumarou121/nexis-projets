@@ -100,12 +100,19 @@ function parse(body, { partial }) {
   return out;
 }
 
-/** Un assigné doit être membre actif de l'organisation (null = désaffecter). */
+/** Un assigné doit être membre actif de l'organisation, et du projet s'il est privé (null = désaffecter). */
 async function assertAssignee(req, assigneeId) {
   if (!assigneeId) return;
   const members = await listOrgMembers(req.auth, req.params.orgId);
   if (!members.some((m) => m.userId === assigneeId)) {
     throw httpError(400, "Ce membre n’appartient pas à l’organisation.");
+  }
+  // Dans un projet privé, l'assigné doit pouvoir le voir : sinon il aurait une tâche qu'il ne peut pas ouvrir.
+  if (req.project?.visibility === "private") {
+    const row = unwrap(
+      await db.from("project_members").select("user_id").eq("project_id", req.params.projectId).eq("user_id", assigneeId).maybeSingle(),
+    );
+    if (!row) throw httpError(400, "Cette personne n’a pas accès à ce projet privé : ajoutez-la d’abord aux membres du projet.");
   }
 }
 

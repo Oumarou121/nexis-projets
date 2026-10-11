@@ -1,22 +1,13 @@
-// Tests de bout en bout SANS Supabase : un faux serveur NEXIS Identity répond à /api/me,
-// et les jetons sont signés en HS256. Chaque cas testé est refusé (401/403) ou invalidé
-// (400/404) AVANT tout accès à la base : la base de test est volontairement injoignable,
-// donc un test qui atteindrait la base échouerait en 500.
+// Tests de bout en bout : un faux NEXIS Identity répond à /api/me, les jetons sont signés en HS256
+// et la base est en mémoire (test/fakeDb.js). La garde de visibilité lit le projet avant les routes ;
+// le projet PROJECT (interne, de ORG) et sa tâche TASK sont donc semés ici. Chaque cas testé reste refusé
+// (401/403) ou invalidé (400/404) avant tout effet d'écriture. Les règles de visibilité ont leur fichier :
+// visibility.test.js.
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import http from "node:http";
-import { SignJWT } from "jose";
-
-const SECRET = "test-secret-test-secret-test-secret-123";
-const IDENTITY = "https://identity.test";
-const ORG = "11111111-1111-4111-8111-111111111111";
-const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
-const PROJECT = "33333333-3333-4333-8333-333333333333";
-const TASK = "44444444-4444-4444-8444-444444444444";
-const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+import { ALL, ORG, OTHER_ORG, PROJECT, TASK, boot, token, uid } from "./helpers.js";
 
 // Droits renvoyés par le faux /api/me, par utilisateur.
-const ALL = ["projects.read", "projects.create", "projects.update", "projects.delete"];
 const access = {
   [uid(1)]: { platformAdmin: false, organizations: [{ organizationId: ORG, permissions: ALL }] },
   [uid(2)]: { platformAdmin: false, organizations: [{ organizationId: ORG, permissions: ["projects.read"] }] },
@@ -25,60 +16,23 @@ const access = {
   [uid(5)]: { platformAdmin: false, organizations: [{ organizationId: ORG, permissions: ["projects.read", "projects.update"] }] },
 };
 
-let identityServer;
-let appServer;
+let app;
 let base;
 
 before(async () => {
-  identityServer = http.createServer((req, res) => {
-    const token = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-    const sub = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString() || "{}").sub;
-    if (req.url === "/api/me" && access[sub]) {
-      res.setHeader("Content-Type", "application/json").end(JSON.stringify(access[sub]));
-    } else {
-      res.statusCode = 401;
-      res.end("{}");
-    }
+  app = await boot({
+    access,
+    seed: (store) => {
+      store.projects.push({ id: PROJECT, organization_id: ORG, name: "Projet", visibility: "internal", created_by: uid(1) });
+      store.tasks.push({ id: TASK, project_id: PROJECT, title: "Tâche", created_by: uid(1) });
+    },
   });
-  await new Promise((r) => identityServer.listen(0, "127.0.0.1", r));
-
-  process.env.IDENTITY_SUPABASE_URL = IDENTITY;
-  process.env.IDENTITY_JWT_SECRET = SECRET;
-  process.env.NEXIS_IDENTITY_URL = `http://127.0.0.1:${identityServer.address().port}`;
-  process.env.DATA_SUPABASE_URL = "http://127.0.0.1:9"; // injoignable exprès
-  process.env.DATA_SUPABASE_SERVICE_ROLE_KEY = "test-key";
-
-  const { app } = await import("../src/app.js");
-  appServer = app.listen(0, "127.0.0.1");
-  await new Promise((r) => appServer.once("listening", r));
-  base = `http://127.0.0.1:${appServer.address().port}`;
+  base = app.base;
 });
 
-after(() => {
-  identityServer?.close();
-  appServer?.close();
-});
+after(() => app?.stop());
 
-async function token(n, { secret = SECRET, expiresIn = "5m", claims = {} } = {}) {
-  return new SignJWT({ role: "authenticated", ...claims })
-    .setProtectedHeader({ alg: "HS256" })
-    .setSubject(uid(n))
-    .setIssuer(`${IDENTITY}/auth/v1`)
-    .setAudience("authenticated")
-    .setIssuedAt()
-    .setExpirationTime(expiresIn)
-    .sign(new TextEncoder().encode(secret));
-}
-
-async function call(method, path, { as, body, rawToken } = {}) {
-  const t = rawToken ?? (as ? await token(as) : null);
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status, json: await res.json().catch(() => ({})) };
-}
+const call = (...args) => app.call(...args);
 
 const projects = (org = ORG) => `/api/organizations/${org}/projects`;
 const tasks = (org = ORG) => `${projects(org)}/${PROJECT}/tasks`;

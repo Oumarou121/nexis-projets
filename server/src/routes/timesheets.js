@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { UUID_RE, httpError, requirePermission } from "../auth.js";
-import { DATE_RE, assertProject, unwrap } from "../util.js";
+import { DATE_RE, assertProject, assertTask, unwrap } from "../util.js";
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/tasks/:taskId/timesheets.
 // Droits : lecture = projects.read ; créer / modifier / supprimer = projects.update.
@@ -43,6 +43,7 @@ const router = Router({ mergeParams: true });
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const rows = unwrap(
     await db
       .from("task_timesheets")
@@ -56,6 +57,7 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
 router.post("/", requirePermission("projects.update"), async (req, res) => {
   const f = parse(req.body, { partial: false });
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const row = unwrap(
     await db
       .from("task_timesheets")
@@ -71,6 +73,7 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   if (Object.keys(f).length === 0) throw httpError(400, "Aucune modification.");
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Feuille de temps introuvable.");
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const row = unwrap(
     await db
       .from("task_timesheets")
@@ -87,6 +90,7 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
 router.delete("/:id", requirePermission("projects.update"), async (req, res) => {
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Feuille de temps introuvable.");
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const rows = unwrap(
     await db
       .from("task_timesheets")

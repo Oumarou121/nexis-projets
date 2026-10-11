@@ -13,6 +13,9 @@ function summary(e, nameOf) {
   const d = e.details ?? {};
   const parts = [];
   if (d.comment) parts.push("commentaire ajouté");
+  if (d.member === "added") parts.push(`${nameOf(d.user_id)} ajouté(e) aux membres`);
+  if (d.member === "removed") parts.push(`${nameOf(d.user_id)} retiré(e) des membres`);
+  if (d.visibility) parts.push(d.visibility === "private" ? "visibilité → privé" : "visibilité → interne");
   if (d.attachment === "added") parts.push("pièce jointe ajoutée");
   if (d.attachment === "removed") parts.push("pièce jointe supprimée");
   if (d.subtask) parts.push("sous-tâche");

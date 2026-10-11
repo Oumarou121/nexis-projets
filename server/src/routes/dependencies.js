@@ -18,6 +18,7 @@ const router = Router({ mergeParams: true });
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const rows = unwrap(
     await db
       .from("task_dependencies")
@@ -50,6 +51,7 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
 router.delete("/:id", requirePermission("projects.update"), async (req, res) => {
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Dépendance introuvable.");
   await assertProject(req.params);
+  await assertTask(req.params.taskId, req.params.projectId);
   const rows = unwrap(
     await db
       .from("task_dependencies")

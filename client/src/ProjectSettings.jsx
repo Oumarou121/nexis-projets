@@ -3,6 +3,8 @@ import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { ColorPicker, Icon } from "./ui.jsx";
 import { projectColor } from "./labels.js";
+import ProjectMembers from "./ProjectMembers.jsx";
+import "./members.css";
 
 const DEFAULT_SETTINGS = {
   dependencies: false,
@@ -10,13 +12,13 @@ const DEFAULT_SETTINGS = {
   recurring_tasks: false,
   timesheets: false,
   documents: false,
-  visibility: "internal",
 };
 
+// Appliquée par le serveur. « Public » (comptes portail) n'existe pas encore : affiché, non sélectionnable.
 const VISIBILITY = [
-  ["private", "Privé", "Utilisateurs internes invités"],
-  ["internal", "Interne", "Tous les utilisateurs internes"],
-  ["public", "Public", "Utilisateurs portail invités et tous les utilisateurs internes"],
+  ["private", "Privé", "Seulement les membres du projet", true],
+  ["internal", "Interne", "Tous les utilisateurs de l'organisation", true],
+  ["public", "Public", "Utilisateurs portail : pas encore disponible", false],
 ];
 
 const OPTIONS = {
@@ -30,12 +32,13 @@ const OPTIONS = {
 };
 
 /** Paramètres du projet (fenêtre) : visibilité et fonctions activables. Enregistrés dès qu'on les change. */
-export default function ProjectSettings({ orgId, project, onChange, onClose }) {
+export default function ProjectSettings({ orgId, project, onChange, onClose, people = [], canList = false, onMembersChange, onLeave }) {
   const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS, ...(project.settings ?? {}) });
   const [tab, setTab] = useState("settings");
   const [saving, setSaving] = useState(false);
   const { canEdit } = usePerms();
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!onClose) return;
@@ -49,6 +52,26 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
     try {
       onChange?.(await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { color }));
       setErr("");
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const visibility = project.visibility ?? "internal";
+
+  async function saveVisibility(value) {
+    if (value === visibility) return;
+    if (value === "private" && !window.confirm("Passer ce projet en privé ? Seuls ses membres (vous en faites partie), les responsables et les administrateurs pourront encore le voir. Les autres personnes le perdront de vue immédiatement.")) return;
+    setSaving(true);
+    try {
+      const { assigneesWithoutAccess, ...updated } = await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { visibility: value });
+      onChange?.(updated);
+      setErr("");
+      // Passage en privé : des personnes avec une tâche en cours n'y ont plus accès.
+      const n = assigneesWithoutAccess?.length ?? 0;
+      setNotice(n > 0 ? `${n} ${n > 1 ? "personnes ont" : "personne a"} une tâche en cours dans ce projet sans en être ${n > 1 ? "membres" : "membre"} : ${n > 1 ? "elles ne la voient" : "elle ne la voit"} plus. Ajoutez-${n > 1 ? "les" : "la"} dans l'onglet « Membres » ou réassignez ${n > 1 ? "leurs tâches" : "sa tâche"}.` : "");
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -76,23 +99,27 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
       <header>
         <span className="set-title">
           <i className="set-dot" style={{ background: `var(--pj-${colorIdx})` }} aria-hidden="true" />
-          <span><small>Paramètres du projet</small><strong>{project.name}</strong></span>
+          <span><small>Paramètres du projet</small><strong>{project.name}{visibility === "private" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="lock" size={14} />Privé</span>}</strong></span>
         </span>
         {onClose && <button type="button" className="icon-btn" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>}
       </header>
       <div className="set-body">
         <div className="set-tabs" role="tablist">
           <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>Paramètres</button>
+          <button role="tab" aria-selected={tab === "members"} className={tab === "members" ? "on" : ""} onClick={() => setTab("members")}>Membres</button>
           <button role="tab" aria-selected={tab === "description"} className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
         </div>
 
-        {tab === "description" ? (
+        {tab === "members" ? (
+          <ProjectMembers orgId={orgId} project={project} people={people} canList={canList} onChange={onMembersChange} onLeave={onLeave} />
+        ) : tab === "description" ? (
           project.description
             ? <p className="panel-desc set-box">{project.description}</p>
             : <div className="set-empty"><strong>Aucune description</strong><span>Vous pouvez l'ajouter depuis le menu « ⋯ » du projet.</span></div>
         ) : (
           <>
             {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
+            {notice && <p className="muted small" role="status" style={{ padding: 0, color: "var(--warn, #b45309)" }}>{notice}</p>}
             <section className="set-box">
               <h5 className="set-h">Couleur du projet</h5>
               <ColorPicker name="set-color" disabled={saving || !canEdit} value={colorIdx} onChange={saveColor} />
@@ -100,13 +127,18 @@ export default function ProjectSettings({ orgId, project, onChange, onClose }) {
             <section className="set-box">
               <h5 className="set-h">Visibilité</h5>
               <div className="set-cards" role="radiogroup" aria-label="Visibilité">
-                {VISIBILITY.map(([v, label, hint]) => (
-                  <label key={v} className="set-card">
-                    <input type="radio" name="visibility" value={v} checked={settings.visibility === v} disabled={saving || !canEdit} onChange={() => saveSetting("visibility", v)} />
+                {VISIBILITY.map(([v, label, hint, available]) => (
+                  <label key={v} className={`set-card ${available ? "" : "is-off"}`}>
+                    <input type="radio" name="visibility" value={v} checked={visibility === v} disabled={saving || !canEdit || !available} onChange={() => saveVisibility(v)} />
                     <span><b>{label}</b><small>{hint}</small></span>
                   </label>
                 ))}
               </div>
+              <p className="muted small" style={{ margin: "10px 0 0" }}>
+                {visibility === "private"
+                  ? "Les membres se gèrent dans l'onglet « Membres »."
+                  : "Passer en privé limite l'accès aux membres du projet (onglet « Membres »)."}
+              </p>
             </section>
             <div className="set-cols">
               {Object.entries(OPTIONS).map(([title, items]) => (
