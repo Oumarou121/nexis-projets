@@ -1646,3 +1646,88 @@ button.cal2-more:hover { background: var(--hov); text-decoration: none; }
 .pg-title { flex-wrap: wrap; }
 .ktitle, .kt .ktitle { overflow-wrap: anywhere; text-align: left; }
 .kdesc { overflow-wrap: anywhere; }
+
+/* ---------- v29 : petites résolutions (marges du Kanban, barre de navigation) ---------- */
+/* Sous 1250 px, 4 colonnes de 280 px mini ne tiennent plus : on passe en défilement horizontal
+   avec des colonnes de largeur fixe, et les mêmes marges que l'en-tête de la page (40 / 28 / 16 px). */
+@media (max-width: 1250px) {
+  .kanban {
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    grid-auto-columns: clamp(260px, 36vw, 320px);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 40px;
+    overscroll-behavior-x: contain;
+  }
+  .kcol { scroll-snap-align: start; }
+}
+@media (max-width: 1100px) { .kanban { scroll-padding-inline: 28px; } }
+@media (max-width: 700px) {
+  .kanban { grid-auto-columns: 86%; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; }
+}
+/* Barre de navigation : entre 701 et 960 px, deux lignes (logo + actions, puis onglets pleine largeur). */
+@media (min-width: 701px) and (max-width: 960px) {
+  .nav { height: auto; flex-wrap: wrap; padding: 12px 28px; gap: 10px 12px; }
+  .brand { margin-right: auto; }
+  .nav .r { margin-left: 0; }
+  .nav-scroll { order: 5; width: 100%; margin: 0; overflow-x: auto; justify-content: space-between; }
+  .nav button.nl { padding: 9px 14px; white-space: nowrap; }
+}
+
+/* ---------- v29b : barre de défilement du Kanban (fine, arrondie, alignée sur les marges) ---------- */
+.kanban { --sb-inset: 40px; }
+@media (max-width: 1100px) { .kanban { --sb-inset: 28px; } }
+@media (max-width: 700px) { .kanban { --sb-inset: 16px; } }
+.kanban::-webkit-scrollbar { height: 14px; }
+.kanban::-webkit-scrollbar-track { background: var(--lane); border-radius: 99px; margin-inline: var(--sb-inset); border: 4px solid transparent; background-clip: padding-box; }
+.kanban::-webkit-scrollbar-thumb { background: var(--bd-s); border-radius: 99px; border: 4px solid transparent; background-clip: padding-box; }
+.kanban::-webkit-scrollbar-thumb:hover, .kanban::-webkit-scrollbar-thumb:active { background: var(--pri); background-clip: padding-box; }
+.kanban::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  .kanban { scrollbar-width: thin; scrollbar-color: var(--bd-s) transparent; }
+}
+@media (max-width: 700px) { .kanban::-webkit-scrollbar { height: 10px; } }
+
+/* ---------- v30 : en-tête « pastille flottante » ---------- */
+@media (min-width: 1101px) { .nav { padding-block: 18px; height: auto; min-height: var(--nav-h); } }
+.nav-scroll { box-shadow: 0 6px 20px -12px rgba(40, 30, 120, .35); }
+/* Les actions de droite sont regroupées dans une seconde pastille. */
+.nav .r { gap: 10px; background: var(--card); border: 1px solid var(--bd); border-radius: 99px; padding: 4px; box-shadow: 0 6px 20px -12px rgba(40, 30, 120, .35); }
+.nav .r .org-name { order: 5; padding-left: 12px; color: var(--mut); font-size: 14px; }
+.nav .r .pop { order: 6; }
+.nav .r .org-av { order: 7; }
+.nav .r select { order: 5; margin-left: 10px; border: 0; background: transparent; font-size: 14px; color: var(--mut); }
+.nav .pop > .icon-btn { background: var(--bg); }
+
+/* Sous 1100 px la ligne unique ne tient plus : deux lignes, dans un ordre fixe.
+   Ligne 1 : logo à gauche, pastille d'actions à droite. Ligne 2 : pastille des onglets, centrée. */
+@media (max-width: 1100px) {
+  .nav { height: auto; min-height: 0; flex-wrap: wrap; padding: 12px 28px; gap: 10px 12px; }
+  .brand { order: 1; margin-right: auto; }
+  .nav .r { order: 2; margin-left: 0; }
+  .nav::after { content: ""; order: 3; flex: 0 0 100%; height: 0; }
+  .nav-scroll { order: 4; width: fit-content; max-width: 100%; margin: 0 auto; padding: 4px; gap: 4px; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+  .nav-scroll::-webkit-scrollbar { display: none; }
+  .nav button.nl { padding: 9px 20px; font-size: 14px; line-height: 1.3; white-space: nowrap; }
+  .nav .pop > .icon-btn, .org-av { width: 40px; height: 40px; }
+}
+@media (max-width: 700px) {
+  .nav { padding: 10px 14px; gap: 8px; }
+  .nav .r { gap: 8px; padding: 4px; }
+  .nav .pop > .icon-btn, .org-av { width: 38px; height: 38px; }
+  .nav-scroll { padding: 4px; gap: 2px; }
+  .nav button.nl { padding: 8px 13px; font-size: 13.5px; }
+  .brand span.t { display: inline; }
+  .org-av { display: inline-grid; }
+  .org-name { display: inline; font-size: 13px; padding-left: 10px; }
+}
+@media (max-width: 560px) {
+  .org-name { display: none; }
+  .nav-scroll { width: 100%; }
+  .nav button.nl { flex: 1 0 auto; justify-content: center; }
+}
+@media (max-width: 360px) {
+  .brand span.t { display: none; }
+  .nav button.nl { padding: 8px 9px; font-size: 13px; }
+}

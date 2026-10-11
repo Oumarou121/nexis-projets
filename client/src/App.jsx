@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { getOrg, nexisHome, setOrg } from "./session.js";
+import { getOrg, setOrg } from "./session.js";
 import Tasks from "./Tasks.jsx";
 import MyTasks from "./MyTasks.jsx";
 import Dashboard from "./Dashboard.jsx";
@@ -105,7 +105,6 @@ export default function App() {
             items={Object.entries(THEMES).map(([v, l]) => ({ label: l, icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
           />
           {orgName && <span className="org-av" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
-          <a className="back" href={nexisHome}><Icon name="back" size={15} /><span className="bk">NEXIS</span></a>
         </div>
       </nav>
       <main className="page">
