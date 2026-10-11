@@ -5,6 +5,7 @@ import projects from "./routes/projects.js";
 import myTasks from "./routes/myTasks.js";
 import dashboard from "./routes/dashboard.js";
 import activity from "./routes/activity.js";
+import search from "./routes/search.js";
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") ?? false }));
@@ -29,6 +30,7 @@ app.get("/api/organizations/:orgId/members", requireAuth, requirePermission("pro
 
 app.use("/api/organizations/:orgId/activity", requireAuth, activity);
 app.use("/api/organizations/:orgId/dashboard", requireAuth, dashboard);
+app.use("/api/organizations/:orgId/search", requireAuth, search);
 app.use("/api/organizations/:orgId/my-tasks", requireAuth, myTasks);
 app.use("/api/organizations/:orgId/projects", requireAuth, projects);
 

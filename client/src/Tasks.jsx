@@ -30,7 +30,7 @@ const EMPTY = { title: "", description: "", labels: "", assigneeId: "", priority
 const parseLabels = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Tâches d'un projet. `members` vient de NEXIS Identity ; `canAssign` = droit de les lister. */
-export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, onBack, onNav }) {
+export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, openTaskId = null, onBack, onNav }) {
   const [project, setProject] = useState(initial);
   const [list, setList] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -159,6 +159,13 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   // Ouvrir la page détail ferme toujours l'aperçu rapide : jamais les deux en même temps.
   const openDetail = useCallback((id) => { setSidebarTask(null); setOpenId(id); }, []);
   const openTask = list.find((t) => t.id === openId);
+  // Arrivée depuis la recherche globale : ouvre la tâche demandée une fois la liste chargée (une seule fois).
+  const [deepDone, setDeepDone] = useState(false);
+  useEffect(() => {
+    if (!openTaskId || deepDone || !loaded) return;
+    setDeepDone(true);
+    if (list.some((t) => t.id === openTaskId)) openDetail(openTaskId);
+  }, [openTaskId, deepDone, loaded, list, openDetail]);
 
   function setView(v) {
     setViewState(v);

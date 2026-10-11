@@ -355,3 +355,25 @@ describe("dépendances du projet et historique des statuts", () => {
     assert.equal((await call("POST", one, { as: 5, body: { dependsOnId: TASK } })).status, 400);
   });
 });
+
+describe("recherche globale", () => {
+  const search = (q, org = ORG) => `/api/organizations/${org}/search?q=${encodeURIComponent(q)}`;
+
+  test("sans jeton → 401", async () => {
+    assert.equal((await call("GET", search("abc"))).status, 401);
+  });
+
+  test("autre organisation → 403", async () => {
+    assert.equal((await call("GET", search("abc", OTHER_ORG), { as: 2 })).status, 403);
+  });
+
+  test("moins de 2 caractères → liste vide, sans accès à la base", async () => {
+    const r = await call("GET", search("a"), { as: 2 });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json, { projects: [], tasks: [] });
+  });
+
+  test("plus de 80 caractères → 400", async () => {
+    assert.equal((await call("GET", search("x".repeat(81)), { as: 2 })).status, 400);
+  });
+});

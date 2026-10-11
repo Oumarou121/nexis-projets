@@ -9,6 +9,7 @@ import { Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
+import GlobalSearch from "./GlobalSearch.jsx";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
 
@@ -20,6 +21,7 @@ export default function App() {
   const [people, setPeople] = useState({ members: [], canAssign: false, ready: false });
   const [err, setErr] = useState("");
   const [theme, setThemeState] = useState(getTheme);
+  const [openTaskId, setOpenTaskId] = useState(null); // tâche à ouvrir dès le chargement du projet (recherche globale)
   const [cmd, setCmd] = useState(null); // commande envoyée au projet ouvert (menu Configuration)
 
   useEffect(() => {
@@ -41,9 +43,11 @@ export default function App() {
     api(`/api/organizations/${orgId}/members`).then((p) => setPeople({ ...p, ready: true })).catch(() => setPeople({ members: [], canAssign: false, ready: true }));
   }, [orgId]);
 
-  async function openProject(id) {
+  async function openProject(id, taskId = null) {
     try {
-      setProject(await api(`/api/organizations/${orgId}/projects/${id}`));
+      const p = await api(`/api/organizations/${orgId}/projects/${id}`);
+      setOpenTaskId(taskId);
+      setProject(p);
       setTab("projects");
     } catch (e) {
       setErr(e.message);
@@ -66,6 +70,7 @@ export default function App() {
 
   function goTo(t) {
     setProject(null);
+    setOpenTaskId(null);
     setTab(t);
   }
 
@@ -99,6 +104,7 @@ export default function App() {
               ))}
             </select>
           )}
+          {orgId && <GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} />}
           <Menu
             label={`Thème : ${THEMES[theme]}`}
             trigger={<Icon name={THEME_ICON[theme]} size={18} />}
@@ -110,7 +116,7 @@ export default function App() {
       <main className="page">
         {err && <p className="error">{err}</p>}
         {orgId && project ? (
-          <Tasks key={project.id} orgId={orgId} project={project} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
+          <Tasks key={project.id} orgId={orgId} project={project} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (
           <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} ready={people.ready} onShowMine={() => setTab("mine")} /></div>
         ) : orgId && tab === "activity" ? (

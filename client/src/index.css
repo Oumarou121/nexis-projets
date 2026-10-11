@@ -1731,3 +1731,43 @@ button.cal2-more:hover { background: var(--hov); text-decoration: none; }
   .brand span.t { display: none; }
   .nav button.nl { padding: 8px 9px; font-size: 13px; }
 }
+
+/* ---------- v31 : recherche globale (Ctrl K) ---------- */
+.gs-dlg { width: min(640px, 100%); border-radius: 18px; }
+.gs-dlg > * { padding: 0; }
+.gs-bar { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--bd); color: var(--mut); }
+.gs-bar input { flex: 1; min-width: 0; border: 0; background: none; box-shadow: none !important; font-size: 16px; color: var(--tx); padding: 4px 0; outline: none; }
+.gs-bar kbd, .gs-foot kbd { font: 500 11.5px "DM Sans", sans-serif; border: 1px solid var(--bd-s); border-radius: 6px; padding: 1px 6px; background: var(--card); color: var(--mut); margin-right: 4px; }
+.gs-body { max-height: min(56vh, 460px); overflow-y: auto; padding: 8px; }
+.gs-hint { margin: 0; padding: 22px 12px; text-align: center; color: var(--mut); font-size: 14px; }
+.gs-list { list-style: none; margin: 0; padding: 0; }
+.gs-grp { padding: 10px 12px 4px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--mut); }
+.gs-it { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; cursor: pointer; }
+.gs-it.on { background: var(--pri-soft); }
+.gs-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--hov); display: grid; place-items: center; flex: none; color: var(--pri); }
+.gs-dot { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.gs-tx { display: grid; min-width: 0; flex: 1; }
+.gs-tx b { font-weight: 500; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-tx small { color: var(--mut); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gs-go { color: var(--mut); opacity: 0; flex: none; }
+.gs-it.on .gs-go { opacity: 1; }
+.gs-foot { display: flex; gap: 16px; padding: 10px 18px !important; border-top: 1px solid var(--bd); background: var(--hov); font-size: 12.5px; color: var(--mut); }
+@media (max-width: 700px) { .gs-foot { display: none; } .gs-bar kbd { display: none; } .gs-dlg { border-radius: 14px; } }
+
+/* ---------- v33 : même barre de défilement fine et arrondie partout (projets, tâches, Gantt, calendrier) ---------- */
+.pj-tl, .table-wrap, .lt-wrap, .gantt, .plan, .cal2-main { --sb-inset: 16px; }
+.pj-tl::-webkit-scrollbar, .table-wrap::-webkit-scrollbar, .lt-wrap::-webkit-scrollbar, .gantt::-webkit-scrollbar, .plan::-webkit-scrollbar, .cal2-main::-webkit-scrollbar { height: 14px; }
+.pj-tl::-webkit-scrollbar-track, .table-wrap::-webkit-scrollbar-track, .lt-wrap::-webkit-scrollbar-track, .gantt::-webkit-scrollbar-track, .plan::-webkit-scrollbar-track, .cal2-main::-webkit-scrollbar-track { background: var(--lane); border-radius: 99px; margin-inline: var(--sb-inset); border: 4px solid transparent; background-clip: padding-box; }
+.pj-tl::-webkit-scrollbar-thumb, .table-wrap::-webkit-scrollbar-thumb, .lt-wrap::-webkit-scrollbar-thumb, .gantt::-webkit-scrollbar-thumb, .plan::-webkit-scrollbar-thumb, .cal2-main::-webkit-scrollbar-thumb { background: var(--bd-s); border-radius: 99px; border: 4px solid transparent; background-clip: padding-box; }
+.pj-tl::-webkit-scrollbar-thumb:hover, .table-wrap::-webkit-scrollbar-thumb:hover, .lt-wrap::-webkit-scrollbar-thumb:hover, .gantt::-webkit-scrollbar-thumb:hover, .plan::-webkit-scrollbar-thumb:hover, .cal2-main::-webkit-scrollbar-thumb:hover { background: var(--pri); background-clip: padding-box; }
+.pj-tl::-webkit-scrollbar-corner, .table-wrap::-webkit-scrollbar-corner, .lt-wrap::-webkit-scrollbar-corner, .gantt::-webkit-scrollbar-corner, .plan::-webkit-scrollbar-corner, .cal2-main::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  .pj-tl, .table-wrap, .lt-wrap, .gantt, .plan, .cal2-main { scrollbar-width: thin; scrollbar-color: var(--bd-s) transparent; }
+}
+/* Commutateur de vues (Chronologie / Liste / Cartes) : défilement possible mais sans barre visible. */
+.pg-sec { scrollbar-width: none; }
+.pg-sec::-webkit-scrollbar { display: none; }
+@media (max-width: 700px) {
+  .pj-tl, .table-wrap, .lt-wrap, .gantt, .plan, .cal2-main { --sb-inset: 12px; }
+  .pj-tl::-webkit-scrollbar, .table-wrap::-webkit-scrollbar, .lt-wrap::-webkit-scrollbar, .gantt::-webkit-scrollbar, .plan::-webkit-scrollbar, .cal2-main::-webkit-scrollbar { height: 10px; }
+}
