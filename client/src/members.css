@@ -20,3 +20,12 @@
 .set-card.is-off:hover { border-color: var(--bd-s); }
 @media (max-width: 640px) { .pm-add { flex-direction: column; } }
 .pm-all { display: inline-grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--pri-soft); color: var(--pri); }
+
+/* Partage (invités externes) */
+.sh-add { flex-wrap: wrap; }
+.sh-add input { flex: 1 1 220px; min-width: 0; }
+.sh-link { display: flex; gap: 8px; }
+.sh-link input { flex: 1; min-width: 0; font-size: 12.5px; }
+.sh-badge { flex: none; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--hov); color: var(--mut); }
+.sh-badge.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.sh-badge.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }

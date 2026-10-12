@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api, download, upload } from "./api.js";
 import { CommentsSkeleton, RowsSkeleton } from "./Skeleton.jsx";
@@ -7,6 +7,18 @@ import TaskDependencies from "./TaskDependencies.jsx";
 import Timesheets from "./Timesheets.jsx";
 import { Avatar, DateField, Icon, PriorityStar } from "./ui.jsx";
 import { MAX_FILE_BYTES, PRIORITY, TASK_STATUS, fileSize, fmtDuration, isLate, memberName, stageDurations } from "./labels.js";
+
+/** Sans accents ni majuscules : « é » et « E » se retrouvent en tapant « e ». */
+const fold = (v) => String(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const escapeRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Texte d'un commentaire, avec les « @Nom » des membres connus mis en évidence (jamais de HTML brut). */
+function withMentions(body, members) {
+  const names = members.map((m) => memberName(m)).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (names.length === 0) return body;
+  const re = new RegExp(`(@(?:${names.map(escapeRe).join("|")}))(?![\\p{L}\\p{N}])`, "gu");
+  return body.split(re).map((part, i) => (i % 2 === 1 ? <span key={i} className="mention">{part}</span> : part));
+}
 
 const fmt = (iso) =>
   new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -51,6 +63,10 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const [files, setFiles] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [text, setText] = useState("");
+  const [mentioned, setMentioned] = useState({}); // { "@Nom": userId } choisis dans la liste de suggestions
+  const [caret, setCaret] = useState(0);
+  const [sugIndex, setSugIndex] = useState(0);
+  const composerRef = useRef(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("description");
@@ -203,16 +219,62 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     }
   }
 
+  // « @mot » juste avant le curseur → liste des membres (du projet si privé) dont le nom correspond.
+  const before = text.slice(0, caret);
+  const at = /(^|\s)@([^\s@]{0,30})$/.exec(before);
+  const suggestions = at
+    ? assignable(null).filter((m) => memberName(m) && fold(memberName(m)).includes(fold(at[2]))).slice(0, 6)
+    : [];
+
+  function pickMention(m) {
+    const tag = `@${memberName(m)}`;
+    const start = caret - at[2].length - 1;
+    const next = `${text.slice(0, start)}${tag} ${text.slice(caret)}`;
+    setText(next);
+    setMentioned((x) => ({ ...x, [tag]: m.userId }));
+    setSugIndex(0);
+    const pos = start + tag.length + 1;
+    setCaret(pos);
+    requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(pos, pos);
+    });
+  }
+
+  function onComposerKey(e) {
+    if (suggestions.length > 0) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setSugIndex((i) => (i + (e.key === "ArrowDown" ? 1 : suggestions.length - 1)) % suggestions.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        pickMention(suggestions[Math.min(sugIndex, suggestions.length - 1)]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCaret(0);
+        return;
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") send(e);
+  }
+
   async function send(e) {
     e.preventDefault();
     if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      const c = await api(base, "POST", { body: text });
+      // On ne garde que les mentions dont le texte est encore dans le commentaire.
+      const mentions = [...new Set(Object.entries(mentioned).filter(([tag]) => text.includes(tag)).map(([, id]) => id))];
+      const c = await api(base, "POST", { body: text, ...(mentions.length ? { mentions } : {}) });
       const next = [...(comments ?? []), c];
       setComments(next);
       onCount(task.id, next.length);
       setText("");
+      setMentioned({});
       setErr("");
     } catch (e2) {
       setErr(e2.message);
@@ -557,7 +619,18 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
         <h3>Discussion {comments && <span className="tc-count">{comments.length}</span>}</h3>
         {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
         {canEdit && <form onSubmit={send} className="composer">
-          <textarea rows={2} placeholder="Écrire un commentaire…" aria-label="Écrire un commentaire" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && send(e)} />
+          <textarea ref={composerRef} rows={2} placeholder="Écrire un commentaire… (@ pour mentionner)" aria-label="Écrire un commentaire" aria-autocomplete="list" aria-expanded={suggestions.length > 0} value={text} maxLength={4000} onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSugIndex(0); }} onSelect={(e) => setCaret(e.target.selectionStart)} onKeyDown={onComposerKey} />
+          {suggestions.length > 0 && (
+            <ul className="mention-list" role="listbox" aria-label="Mentionner un membre">
+              {suggestions.map((m, i) => (
+                <li key={m.userId} role="option" aria-selected={i === sugIndex}>
+                  <button type="button" className={i === sugIndex ? "on" : ""} onMouseDown={(e) => { e.preventDefault(); pickMention(m); }}>
+                    <Avatar member={m} size={20} />{memberName(m)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="row">
             <span className="muted small" style={{ marginRight: "auto" }}>{text.length > 3500 ? `${text.length} / 4000` : "Ctrl + Entrée pour envoyer"}</span>
             <button className="pj-ok" disabled={busy || !text.trim()}>Commenter</button>
@@ -576,7 +649,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                       <span className="muted small">{hour(c.createdAt)}</span>
                       {canEdit && c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
                     </header>
-                    <p className="comment-body">{c.body}</p>
+                    <p className="comment-body">{withMentions(c.body, members)}</p>
                   </div>
                 </div>
               ))}

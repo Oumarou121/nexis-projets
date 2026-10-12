@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 const TABLES = [
   "projects", "tasks", "project_members", "activity_log", "task_comments", "task_attachments",
-  "task_activities", "task_timesheets", "task_dependencies", "task_status_history",
+  "task_activities", "task_timesheets", "task_dependencies", "task_status_history", "notifications", "notification_prefs", "project_guests", "digest_log", "push_tokens",
 ];
 
 // Valeurs par défaut posées à l'insertion (comme les « default » SQL).
@@ -14,7 +14,7 @@ const DEFAULTS = {
   tasks: () => ({ status: "todo", priority: "medium", assignee_id: null, due_date: null, start_date: null, labels: [], parent_id: null, is_milestone: false, description: null }),
   activity_log: () => ({ restricted: false, details: {} }),
 };
-const PRIMARY_KEYS = { project_members: ["project_id", "user_id"] };
+const PRIMARY_KEYS = { project_members: ["project_id", "user_id"], notification_prefs: ["user_id"], digest_log: ["user_id", "organization_id", "day"], push_tokens: ["token"] };
 // Clés étrangères (enfant → parent) : sert aux embeds et aux suppressions en cascade.
 const FK = {
   tasks: { projects: "project_id" },
@@ -25,6 +25,8 @@ const FK = {
   task_timesheets: { tasks: "task_id" },
   task_dependencies: { tasks: "task_id" },
   task_status_history: { tasks: "task_id" },
+  notifications: { projects: "project_id", tasks: "task_id" },
+  project_guests: { projects: "project_id" },
 };
 
 export function createFakeDb() {
@@ -75,6 +77,8 @@ export function createFakeDb() {
     neq(col, v) { this.filters.push((r) => get(r, col) !== v); return this; }
     in(col, list) { this.filters.push((r) => list.includes(get(r, col))); return this; }
     is(col, v) { this.filters.push((r) => (get(r, col) ?? null) === v); return this; }
+    lte(col, v) { this.filters.push((r) => get(r, col) <= v); return this; }
+    gte(col, v) { this.filters.push((r) => get(r, col) >= v); return this; }
     lt(col, v) { this.filters.push((r) => get(r, col) < v); return this; }
     ilike(col, pattern) { this.filters.push((r) => ilike(get(r, col), pattern)); return this; }
     not(col, op, v) {

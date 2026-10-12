@@ -4,6 +4,7 @@ import { UUID_RE, httpError, listOrgMembers } from "../auth.js";
 import { unwrap } from "../util.js";
 import { addMember, assigneesWithoutAccess as listAssigneesWithoutAccess } from "../access.js";
 import { logActivity } from "../activity.js";
+import { notify } from "../notifications.js";
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/members, derrière projectGuard
 // (qui a déjà vérifié que l'appelant voit le projet) : lire = projects.read ; ajouter / retirer = projects.update.
@@ -50,6 +51,10 @@ router.post("/", async (req, res) => {
       entityId: req.project.id, projectId: req.project.id, label: req.project.name,
       details: { member: "added", user_id: userId },
     });
+    await notify({
+      orgId: req.params.orgId, userId, actorId: req.auth.userId, type: "project_member_added",
+      projectId: req.project.id, title: `Vous avez été ajouté au projet « ${req.project.name} »`, auth: req.auth,
+    });
   }
   const row = unwrap(
     await db.from("project_members").select("user_id, added_by, created_at").eq("project_id", req.params.projectId).eq("user_id", userId).maybeSingle(),
@@ -81,6 +86,13 @@ router.delete("/:userId", async (req, res) => {
     entityId: req.project.id, projectId: req.project.id, label: req.project.name,
     details: { member: "removed", user_id: userId },
   });
+  // Seul un projet privé fait perdre l'accès. Pas de lien vers le projet : il ne lui est plus accessible.
+  if (req.project.visibility === "private") {
+    await notify({
+      orgId: req.params.orgId, userId, actorId: req.auth.userId, type: "project_access_removed",
+      title: `Vous n’avez plus accès au projet « ${req.project.name} »`, auth: req.auth,
+    });
+  }
   res.status(204).end();
 });
 

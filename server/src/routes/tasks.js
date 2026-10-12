@@ -1,3 +1,4 @@
+import { notify } from "../notifications.js";
 import { Router } from "express";
 import { db } from "../db.js";
 import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
@@ -116,6 +117,13 @@ async function assertAssignee(req, assigneeId) {
   }
 }
 
+/** Prévient la personne à qui la tâche vient d'être assignée (jamais celle qui l'assigne). */
+const notifyAssigned = (req, row) =>
+  notify({
+    orgId: req.params.orgId, userId: row.assignee_id, actorId: req.auth.userId, type: "task_assigned",
+    projectId: row.project_id, taskId: row.id, title: `Tâche assignée : ${row.title}`, auth: req.auth,
+  });
+
 const router = Router({ mergeParams: true });
 router.use("/:taskId/comments", comments);
 router.use("/:taskId/attachments", attachments);
@@ -175,6 +183,7 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
       ...(row.parent_id ? { subtask: true } : {}),
     },
   });
+  if (row.assignee_id) await notifyAssigned(req, row);
   res.status(201).json(toApi(row));
 });
 
@@ -191,8 +200,8 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
     const due = f.due_date !== undefined ? f.due_date : cur?.due_date;
     if (start && due && start > due) throw httpError(400, "La date de début doit précéder l'échéance.");
   }
-  const previous = f.status
-    ? unwrap(await db.from("tasks").select("status").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
+  const previous = f.status || f.assignee_id !== undefined
+    ? unwrap(await db.from("tasks").select("status, assignee_id").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
     : null;
   const row = unwrap(
     await db
@@ -204,6 +213,7 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
       .maybeSingle(),
   );
   if (!row) throw httpError(404, "Tâche introuvable.");
+  if (f.assignee_id !== undefined && row.assignee_id && previous?.assignee_id !== row.assignee_id) await notifyAssigned(req, row);
   if (f.status && previous && previous.status !== row.status) {
     await recordStatus({ taskId: row.id, status: row.status, actorId: req.auth.userId });
   }

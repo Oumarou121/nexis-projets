@@ -14,6 +14,7 @@ export const PROJECT = "33333333-3333-4333-8333-333333333333";
 export const TASK = "44444444-4444-4444-8444-444444444444";
 export const uid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
+export const MODULE_KEY = "module-key-module-key-module-key-123";
 export const ALL = ["projects.read", "projects.create", "projects.update", "projects.delete"];
 
 export async function token(n, { secret = SECRET, expiresIn = "5m", claims = {} } = {}) {
@@ -38,7 +39,22 @@ export async function boot({ access, orgMembers = [], seed = () => {} }) {
   seed(store);
   mock.module(new URL("../src/db.js", import.meta.url).href, { namedExports: { db } });
 
+  const internalCalls = [];
   const identity = http.createServer((req, res) => {
+    // Accès de serveur à serveur (clé de module) : e-mail des membres actifs demandés.
+    if (req.url === "/api/internal/users/emails" && req.method === "POST") {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        const reply = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+        if ((req.headers.authorization ?? "") !== `Bearer ${MODULE_KEY}`) return reply(401, {});
+        const { organizationId, userIds } = JSON.parse(raw || "{}");
+        internalCalls.push({ organizationId, userIds });
+        if (organizationId !== ORG) return reply(200, { users: [] });
+        reply(200, { users: userIds.filter((id) => orgMembers.includes(id)).map((id) => ({ userId: id, email: `${id}@test.example`, firstName: "P", lastName: id.slice(-2) })) });
+      });
+      return;
+    }
     const tok = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
     const sub = JSON.parse(Buffer.from(tok.split(".")[1] ?? "", "base64url").toString() || "{}").sub;
     const json = (status, body) => res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
@@ -48,7 +64,7 @@ export async function boot({ access, orgMembers = [], seed = () => {} }) {
     if (m) {
       const org = access[sub].organizations.find((o) => o.organizationId === m[1]);
       if (!org?.permissions.includes("users.read")) return json(403, {});
-      return json(200, { members: orgMembers.map((id) => ({ userId: id, email: `${id}@test`, firstName: "P", lastName: id.slice(-2), status: "active" })) });
+      return json(200, { members: orgMembers.map((id) => ({ userId: id, email: `${id}@test.example`, firstName: "P", lastName: id.slice(-2), status: "active" })) });
     }
     return json(404, {});
   });
@@ -65,15 +81,15 @@ export async function boot({ access, orgMembers = [], seed = () => {} }) {
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  async function call(method, path, { as, body, rawToken } = {}) {
+  async function call(method, path, { as, body, rawToken, headers } = {}) {
     const t = rawToken ?? (as ? await token(as) : null);
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...(t ? { Authorization: `Bearer ${t}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}), ...headers },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: res.status, json: await res.json().catch(() => ({})) };
   }
 
-  return { base, call, store, stop: () => { identity.close(); server.close(); } };
+  return { base, call, store, internalCalls, stop: () => { identity.close(); server.close(); } };
 }

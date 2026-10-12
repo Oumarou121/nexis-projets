@@ -100,6 +100,46 @@ export async function listOrgMembers(auth, orgId) {
   return data;
 }
 
+// Adresse e-mail d'un membre, de serveur à serveur : clé de module IDENTITY_MODULE_KEY (celle déclarée
+// dans MODULE_API_KEYS chez NEXIS Identity, entrée « projets »). Aucun utilisateur n'intervient, donc
+// elle sert aux rappels automatiques et aux notifications dont l'auteur n'a pas users.read.
+// Seuls les membres actifs de l'organisation sont renvoyés. Cache 5 min (les rappels d'une passe
+// reviennent souvent aux mêmes personnes). Les échecs ne sont pas mis en cache.
+const emailCache = new Map();
+const EMAIL_TTL_MS = 300_000;
+
+/** Vide le cache des adresses (tests). */
+export const clearEmailCache = () => emailCache.clear();
+
+/** Vrai si la clé de module est configurée (sinon on retombe sur le jeton de l'appelant). */
+export const serviceEmailEnabled = () => !!process.env.IDENTITY_MODULE_KEY;
+
+/** @returns {Promise<string|null>} l'adresse, ou null si la personne n'est pas un membre actif. Lève en cas de panne. */
+export async function lookupMemberEmail(orgId, userId) {
+  const key = `${orgId}:${userId}`;
+  const hit = emailCache.get(key);
+  if (hit && Date.now() - hit.at < EMAIL_TTL_MS) return hit.email;
+
+  let res;
+  try {
+    res = await fetch(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/internal/users/emails`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.IDENTITY_MODULE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ organizationId: orgId, userIds: [userId] }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw httpError(502, "NEXIS Identity est injoignable.");
+  }
+  if (res.status === 401) throw httpError(502, "Clé de module refusée par NEXIS Identity (IDENTITY_MODULE_KEY).");
+  if (!res.ok) throw httpError(502, "Réponse inattendue de NEXIS Identity.");
+
+  const { users = [] } = await res.json();
+  const email = users.find((u) => u.userId?.toLowerCase() === userId.toLowerCase())?.email ?? null;
+  if (email) emailCache.set(key, { at: Date.now(), email });
+  return email;
+}
+
 /** Exige une permission dans l'organisation :orgId (admin plateforme = tout). */
 export const requirePermission = (permission) => async (req, _res, next) => {
   try {

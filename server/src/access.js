@@ -9,8 +9,10 @@ import { unwrap } from "./util.js";
 //              FULL_ACCESS_PERMISSION dans l'organisation et les administrateurs plateforme.
 //
 // Un projet privé qu'on ne peut pas voir répond 404 (jamais 403) : son existence n'est pas révélée.
-// « public » (comptes portail) n'est pas pris en charge : le serveur le refuse.
-export const VISIBILITIES = ["internal", "private"];
+//   public   : comme « internal » pour l'organisation, et en plus partageable en LECTURE SEULE avec des
+//              invités externes par e-mail (table project_guests, API /api/portal, voir routes/portal.js).
+//              Un invité n'a AUCUN accès à l'API de l'organisation.
+export const VISIBILITIES = ["internal", "private", "public"];
 
 // Qui voit TOUS les projets privés de l'organisation sans en être membre. Une seule constante
 // à changer si cette règle ne vous convient pas (l'administrateur plateforme voit tout, toujours).

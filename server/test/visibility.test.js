@@ -226,8 +226,8 @@ describe("créer et supprimer un projet privé", () => {
 });
 
 describe("changer la visibilité", () => {
-  test("« public » et les valeurs inconnues sont refusés", async () => {
-    for (const visibility of ["public", "secret", 1, null]) {
+  test("les valeurs inconnues sont refusées", async () => {
+    for (const visibility of ["secret", 1, null]) {
       assert.equal((await call("PATCH", `${projects}/${P_INT}`, { as: MEMBER, body: { visibility } })).status, 400, String(visibility));
     }
   });

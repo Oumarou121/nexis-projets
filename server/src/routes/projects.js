@@ -8,6 +8,7 @@ import { changedFields, logActivity, syncActivityVisibility } from "../activity.
 import { pathsForTasks, removeFiles } from "../storage.js";
 import { VISIBILITIES, addMember, assigneesWithoutAccess, getScope, isFullAccess, projectGuard, removeMember } from "../access.js";
 import members from "./members.js";
+import guests, { revokeAllGuests } from "./guests.js";
 
 const STATUSES = ["planned", "active", "on_hold", "done"];
 const COLS = "id, organization_id, name, description, status, priority, due_date, settings, visibility, color, created_by, created_at, updated_at";
@@ -60,10 +61,7 @@ function parse(body, { partial }) {
     out.color = body.color;
   }
   if (has("visibility")) {
-    if (body.visibility === "public") {
-      throw httpError(400, "La visibilité « public » nécessite les comptes portail, qui ne sont pas encore pris en charge.");
-    }
-    if (!VISIBILITIES.includes(body.visibility)) throw httpError(400, "Visibilité invalide (internal ou private).");
+    if (!VISIBILITIES.includes(body.visibility)) throw httpError(400, "Visibilité invalide (internal, private ou public).");
     out.visibility = body.visibility;
   }
   if (has("settings")) {
@@ -90,6 +88,7 @@ const router = Router({ mergeParams: true });
 // Garde unique : tout ce qui est sous /:projectId (y compris les routes ajoutées plus tard) passe par elle.
 router.use("/:projectId", projectGuard);
 router.use("/:projectId/members", members);
+router.use("/:projectId/guests", guests);
 router.use("/:projectId/tasks", tasks);
 router.use("/:projectId/dependencies", projectDependencies);
 
@@ -209,6 +208,9 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
     throw httpError(404, "Projet introuvable.");
   }
   if (f.visibility && f.visibility !== req.project.visibility) await syncActivityVisibility(row.id, row.visibility);
+  // Quitter « public » coupe TOUS les accès invités : repasser en public plus tard ne doit pas les rouvrir
+  // en silence. (Le portail refuse de toute façon un projet non public ; c'est la ceinture et les bretelles.)
+  if (req.project.visibility === "public" && row.visibility !== "public") await revokeAllGuests(row.id);
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "update", entityType: "project",
     entityId: row.id, projectId: row.id, label: row.name, details: changedFields(f),

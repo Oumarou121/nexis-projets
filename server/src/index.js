@@ -8,5 +8,9 @@ for (const k of ["IDENTITY_SUPABASE_URL", "NEXIS_IDENTITY_URL", "DATA_SUPABASE_U
 }
 
 const { app } = await import("./app.js");
+const { startReminders } = await import("./reminders.js");
+const { startDigest } = await import("./digest.js");
 const port = Number(process.env.PORT) || 4000;
 app.listen(port, () => console.log(`API NEXIS Projets sur :${port}`));
+startReminders();
+startDigest();

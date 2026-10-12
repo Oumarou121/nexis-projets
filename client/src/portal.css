@@ -1,0 +1,32 @@
+/* Page portail des invités externes (lecture seule). Utilise les variables du thème de index.css. */
+.pt { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 14px; color: var(--tx); }
+.pt-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pt-brand { font: 700 15px var(--font-d, "Sora", system-ui, sans-serif); color: var(--pri); }
+.pt-ro { font-size: 12px; font-weight: 600; color: var(--mut); background: var(--hov); border-radius: 99px; padding: 3px 10px; }
+.pt-card { background: var(--card); border: 1px solid var(--bd); border-radius: 16px; padding: 18px 20px; box-shadow: var(--sh-1); }
+.pt-card h1 { margin: 0; font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; }
+.pt-card h2 { margin: 0 0 10px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.pt-center { text-align: center; padding: 40px 20px; }
+.pt-center h1 { font-size: 20px; margin-bottom: 8px; }
+.pt-center p { margin: 0; color: var(--mut); line-height: 1.5; }
+.pt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pt-chip { flex: none; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: var(--sel); color: var(--pri); }
+.pt-chip.warn { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
+.pt-desc { margin: 10px 0 0; color: var(--mut); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pt-prog { height: 8px; border-radius: 99px; background: var(--hov); margin-top: 16px; overflow: hidden; }
+.pt-prog i { display: block; height: 100%; border-radius: inherit; background: var(--pri); }
+.pt-stats { margin: 8px 0 0; font-size: 13.5px; color: var(--mut); }
+.pt-stats b { color: var(--tx); }
+.pt .late { color: var(--bad); font-weight: 600; }
+.pt-count { font-size: 12px; font-weight: 600; color: var(--mut); background: var(--hov); border-radius: 99px; padding: 1px 8px; }
+.pt-list { list-style: none; margin: 0; padding: 0; }
+.pt-group + .pt-group { border-top: 1px solid var(--bd); }
+.pt-task { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 14.5px; }
+.pt-task.sub { padding-left: 22px; font-size: 13.5px; color: var(--mut); }
+.pt-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.pt-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pt-ms { color: var(--pri); }
+.pt-due { flex: none; font-size: 12.5px; color: var(--mut); white-space: nowrap; }
+.pt-due.late { color: var(--bad); font-weight: 600; }
+.pt-foot { text-align: center; font-size: 12px; color: var(--mut); padding-top: 8px; }
+@media (max-width: 520px) { .pt-task { flex-wrap: wrap; } .pt-due { margin-left: 19px; } }

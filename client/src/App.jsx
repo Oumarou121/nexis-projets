@@ -11,6 +11,7 @@ import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
 import logo from "./assets/logo.png";
 import GlobalSearch from "./GlobalSearch.jsx";
+import NotificationBell from "./NotificationBell.jsx";
 import { PermsContext, featureOn } from "./perms.js";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
@@ -119,6 +120,7 @@ export default function App() {
           )}
           {loading && <span className="pop nav-ph" aria-hidden="true"><span className="icon-btn" /></span>}
           {orgId && <span className="nav-in"><GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} /></span>}
+          {orgId && <span className="nav-in"><NotificationBell key={orgId} orgId={orgId} onOpen={openProject} /></span>}
           <Menu
             label={`Thème : ${THEMES[theme]}`}
             trigger={<Icon name={THEME_ICON[theme]} size={18} />}

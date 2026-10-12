@@ -94,3 +94,75 @@ Voir `DEPLOIEMENT.md`.
 - **Étape 8** : Calendrier — vue mensuelle des tâches avec grille 7 colonnes (jours de la semaine), navigation par mois (Aujourd'hui, précédent, suivant), filtre par responsable (panneau latéral avec checkboxes), affichage des tâches par échéance avec couleurs par responsable, clic pour ouvrir le détail. Aucun changement serveur ni base.
 - **Étape 9** : Dépendances et Jalons — onglet Dépendances dans le formulaire de tâche pour définir les tâches bloquantes (une tâche ne peut commencer que si ses dépendances sont terminées), bouton Jalons dans l'écran Tâches pour lister et gérer les jalons du projet (tâches marquées comme importantes avec indicateur ★), possibilité de marquer/retir le statut jalon sur une tâche. Migrations SQL `20261008100000_task_dependencies.sql` (table task_dependencies) et `20261008110000_task_milestones.sql` (champ is_milestone dans tasks), routes serveur correspondantes.
 - **Étape 10** : Modernisation du design — cartes avec shadows subtils et bordures arrondies (8px), animations et transitions CSS fluides (fadeIn, slideUp, slideIn), sidebar de détails à droite pour afficher rapidement les informations d'une tâche sans ouvrir le formulaire complet, bouton ℹ dans toutes les vues (liste, kanban, gantt, calendrier) pour ouvrir la sidebar. Composant `TaskSidebar.jsx` ajouté, CSS étendu avec animations et styles de sidebar.
+
+
+## E-mails (Resend)
+
+Tout envoi d'e-mail passe par `sendMail()` dans `server/src/mail.js` (invitations du mode public à venir, notifications). Aucun autre fichier ne parle à Resend : changer de fournisseur = réécrire cette fonction.
+
+1. Créer un compte Resend et **vérifier votre domaine** (enregistrements DNS SPF/DKIM) ; sans cela les e-mails partent en spam ou sont refusés.
+2. Dans `server/.env` : `RESEND_API_KEY` et `MAIL_FROM` (expéditeur sur le domaine vérifié).
+3. Sans ces variables, les messages sont seulement écrits dans la console (développement, tests).
+
+Plan gratuit : 100 e-mails/jour, 3 000/mois, un domaine. Quota atteint ou service en panne → l'API répond 503 ; ce n'est jamais un succès silencieux.
+
+## Notifications dans l'application (la cloche)
+
+Migration à exécuter une seule fois : `supabase/migrations/20261012090000_notifications.sql`.
+
+- `notify()` (`server/src/notifications.js`) est le point d'entrée unique. Il n'échoue jamais pour l'appelant, ne notifie pas l'auteur de l'action, et ne notifie dans un projet privé que ses membres.
+- Événements branchés : tâche assignée ou réassignée, ajouté à un projet, retiré d'un projet privé, **commentaire** sur une tâche (prévient l'assigné et le créateur, une seule alerte tant qu'elle n'est pas lue) et **mention @** dans un commentaire. Migration à exécuter en dernier : `supabase/migrations/20261012110000_notifications_comments_mentions.sql`.
+- Routes : `GET /api/organizations/:orgId/notifications` (30 dernières + compteur), `POST …/:id/read`, `POST …/read-all`. Chacun ne voit que les siennes ; celles d'un projet privé devenu inaccessible sont masquées.
+- Client : cloche dans la barre du haut (`NotificationBell.jsx`), rafraîchie toutes les minutes quand l'onglet est visible.
+- **Canal e-mail :** chaque notification crée aussi un e-mail (Resend) si la personne ne l'a pas désactivé (case dans le panneau de la cloche). Migration à exécuter après la précédente : `supabase/migrations/20261012100000_notification_prefs.sql`. L'adresse du destinataire vient de NEXIS Identity avec le droit `users.read` de la personne qui agit ; sans ce droit, seule la cloche est alimentée. L'envoi se fait en arrière-plan : une panne ou un quota Resend (100/jour en gratuit) n'empêche jamais l'action. `APP_URL` donne le lien de l'e-mail.
+- Canal push (Firebase) : voir « Notifications push » ci-dessous.
+
+**Mentions (@).** Dans la zone de commentaire, taper `@` ouvre la liste des membres (ceux du projet s'il est privé) ; le serveur reçoit `mentions: [userId…]` en plus du texte. Il ignore en silence les personnes hors organisation (ou hors projet privé) et ne notifie jamais l'auteur. Sans le droit `users.read` (annuaire NEXIS Identity), les mentions ne peuvent pas être vérifiées : elles sont ignorées, mais les alertes de commentaire partent.
+
+## Mode « public » : invités externes par e-mail (lecture seule)
+
+Migration à exécuter en dernier : `supabase/migrations/20261012120000_project_guests.sql` (ajoute le niveau « public » et la table `project_guests`). Variables : `APP_URL` (obligatoire pour inviter), `RESEND_API_KEY` / `MAIL_FROM`, `TRUST_PROXY` derrière un proxy.
+
+- **Activer :** Paramètres du projet → Visibilité → Public (confirmation). Un onglet « Partage » apparaît : adresse e-mail + durée de validité (7 j, 30 j, 90 j, 1 an, illimitée). Pour l'organisation, « public » se comporte comme « interne ».
+- **Lien :** `APP_URL/#/p/<jeton>`. Le jeton est dans le **fragment** : il n'est jamais envoyé au serveur d'hébergement du client ni dans ses journaux. Il est **personnel** (un par adresse) et réutilisable jusqu'à expiration ou révocation. Seule son empreinte SHA-256 est stockée en base.
+- **Ce que voit l'invité (`GET /api/portal`, en-tête `X-Portal-Token`) :** nom, description et statut du projet, avancement, tâches (titre, statut, priorité, échéances, jalon, sous-tâches). Liste blanche stricte (`server/src/routes/portal.js`) : jamais les assignés, auteurs, descriptions de tâches, étiquettes, commentaires, pièces jointes, temps passé, ni les autres projets. Un invité n'a **aucun accès** à l'API de l'organisation.
+- **Fin d'accès :** révocation (individuelle), expiration, « Renvoyer » (nouveau jeton, l'ancien meurt), ou sortie du niveau « public » (révoque tous les invités ; repasser en public ne les rouvre pas). Jeton invalide, expiré, révoqué ou projet non public : toujours la même réponse 404.
+- **Limitation de débit :** 120 requêtes/min et 10 jetons invalides/10 min par IP (en mémoire : par instance).
+- **E-mail impossible** (quota Resend, panne, non configuré) : l'invité est créé et le lien est affiché une seule fois à l'invitant, pour qu'il le transmette lui-même.
+- **Pas encore :** commentaires des invités, lien anonyme (sans e-mail), Gantt/calendrier dans le portail, mot de passe sur le lien.
+
+## Rappels d'échéance (cloche)
+
+Migration à exécuter en dernier : `supabase/migrations/20261012130000_notifications_due_dates.sql`.
+
+Une passe toutes les heures (`server/src/reminders.js`, lancée au démarrage de `index.js` ; `REMINDERS=off` la désactive) :
+- **échéance aujourd'hui ou demain** → « Échéance demain : … », une seule fois par tâche et par personne ;
+- **en retard** (jusqu'à 30 jours) → « En retard (échéance le …) : … », relancé au plus une fois tous les 7 jours.
+
+Seul l'**assigné** est prévenu ; ni les tâches terminées, ni les jalons, ni les tâches sans assigné. Les règles de `notify()` s'appliquent (projet privé : membres seulement). **E-mail** : chaque rappel part aussi par e-mail (Resend), sauf si la personne l'a désactivé dans la cloche. Une passe automatique n'a pas d'appelant : l'adresse est demandée à NEXIS Identity en **serveur à serveur** (`POST /api/internal/users/emails`, clé de module). Mise en place : générer une clé (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`), la déclarer chez Identity dans `MODULE_API_KEYS=projets:<clé>`, puis la mettre ici dans `IDENTITY_MODULE_KEY` (même valeur) et redéployer les deux. Sans `IDENTITY_MODULE_KEY`, seule la cloche est alimentée. La même clé permet aussi d'envoyer les e-mails de notification (assignation, commentaire…) quand l'auteur de l'action n'a pas le droit `users.read`. Seuls les membres actifs de l'organisation sont retrouvés. Dates en UTC. Ne lancer qu'**une seule instance** du serveur avec les rappels actifs (sinon doublons possibles).
+
+## Résumé quotidien (e-mail)
+
+Migration à exécuter en dernier : `supabase/migrations/20261012140000_daily_digest.sql` (colonne `digest_enabled` + table `digest_log`).
+
+Une fois par jour (`server/src/digest.js`, lancé au démarrage de `index.js` ; `DAILY_DIGEST=off` le désactive), chaque personne qui a des tâches **assignées** à suivre reçoit un e-mail : **en retard** (jusqu'à 30 jours), **pour aujourd'hui** et **à venir** (3 prochains jours). Rien à signaler : pas d'e-mail. Ni tâches terminées, ni jalons ; projet privé : membres seulement (mêmes règles que `notify()`).
+
+- **Heure et fuseau :** `DIGEST_HOUR` (0-23, 8 par défaut) et `DIGEST_TZ` (fuseau IANA, ex. `Africa/Tunis` ; UTC par défaut). « Aujourd'hui » suit ce fuseau. Serveur arrêté à l'heure prévue : l'envoi a encore lieu dans les 4 heures qui suivent, sinon la journée est sautée.
+- **Une seule fois par jour :** la ligne `digest_log` (personne, organisation, jour) est réservée avant l'envoi, puis libérée si l'envoi échoue (réessai à la passe horaire suivante). Une personne dans deux organisations reçoit un résumé par organisation.
+- **Désactivation :** case « Recevoir un résumé quotidien de mes tâches » dans la cloche. Désactiver les e-mails de notification coupe aussi le résumé.
+- **Prérequis :** `IDENTITY_MODULE_KEY` (adresse retrouvée chez Identity en serveur à serveur) et Resend. Sans la clé, rien n'est envoyé.
+- **Quota Resend (plan gratuit : 100 e-mails/jour) :** le résumé s'ajoute aux e-mails de rappel et de notification. Au premier refus 503 de Resend, la passe s'arrête.
+- Une seule instance du serveur par déploiement ; la réservation en base évite quand même les doublons.
+
+## Notifications push (Firebase Cloud Messaging)
+
+Chaque notification de la cloche déclenche aussi un push sur les appareils que la personne a activés (case « Recevoir les notifications push sur cet appareil » dans la cloche). Mêmes règles de visibilité que la cloche ; les e-mails désactivés n'empêchent pas le push.
+
+- **Serveur** : `FIREBASE_SERVICE_ACCOUNT` (JSON de la clé du compte de service, sur une ligne) ou `FIREBASE_SERVICE_ACCOUNT_FILE` (chemin). Sans l'un des deux, le push est désactivé. Migration : `20261012150000_push_tokens.sql`, à exécuter une seule fois.
+- **Client** : `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`, `VITE_FIREBASE_VAPID_KEY` (voir `client/.env.example`). Sans elles, la case n'apparaît pas.
+- Le service worker est `client/public/firebase-messaging-sw.js` : il doit être servi à la racine du site (`/firebase-messaging-sw.js`), en HTTPS (ou `localhost`).
+- Les jetons que FCM ne reconnaît plus sont supprimés automatiquement.
+
+### iPhone (PWA)
+
+Le push web n'existe sur iOS (16.4 minimum) que pour une application ajoutée à l'écran d'accueil. Le client fournit pour cela `client/public/manifest.webmanifest`, les icônes (`icon-*.png`, `apple-touch-icon.png`) et le service worker `firebase-messaging-sw.js`. Dans Safari : Partager, « Sur l'écran d'accueil », ouvrir NEXIS depuis l'icône, puis cocher la case push dans la cloche (la permission doit être demandée depuis ce mode). Le site doit être en HTTPS, et le service worker servi à la racine (`/firebase-messaging-sw.js`) sans redirection.

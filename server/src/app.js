@@ -6,8 +6,13 @@ import myTasks from "./routes/myTasks.js";
 import dashboard from "./routes/dashboard.js";
 import activity from "./routes/activity.js";
 import search from "./routes/search.js";
+import notifications from "./routes/notifications.js";
+import portal from "./routes/portal.js";
 
 const app = express();
+// Derrière un proxy (Render, Nginx…), TRUST_PROXY=1 : sans cela, tous les visiteurs partagent l'IP du proxy
+// et la limitation de débit du portail les pénaliserait ensemble.
+if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") ?? false }));
 app.use(express.json({ limit: "100kb" }));
 
@@ -31,6 +36,10 @@ app.get("/api/organizations/:orgId/members", requireAuth, requirePermission("pro
 app.use("/api/organizations/:orgId/activity", requireAuth, activity);
 app.use("/api/organizations/:orgId/dashboard", requireAuth, dashboard);
 app.use("/api/organizations/:orgId/search", requireAuth, search);
+// Portail des invités : SANS authentification NEXIS (le jeton d'invitation est l'identifiant). Doit rester
+// totalement séparé du reste : il n'utilise ni requireAuth ni projectGuard.
+app.use("/api/portal", portal);
+app.use("/api/organizations/:orgId/notifications", requireAuth, notifications);
 app.use("/api/organizations/:orgId/my-tasks", requireAuth, myTasks);
 app.use("/api/organizations/:orgId/projects", requireAuth, projects);
 

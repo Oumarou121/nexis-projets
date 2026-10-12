@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { ColorPicker, Icon } from "./ui.jsx";
 import { projectColor } from "./labels.js";
 import ProjectMembers from "./ProjectMembers.jsx";
+import ProjectSharing from "./ProjectSharing.jsx";
 import "./members.css";
 
 const DEFAULT_SETTINGS = {
@@ -14,11 +15,11 @@ const DEFAULT_SETTINGS = {
   documents: false,
 };
 
-// Appliquée par le serveur. « Public » (comptes portail) n'existe pas encore : affiché, non sélectionnable.
+// Appliquée par le serveur. « Public » = comme « Interne » pour l'organisation + invités externes en lecture seule.
 const VISIBILITY = [
   ["private", "Privé", "Seulement les membres du projet", true],
   ["internal", "Interne", "Tous les utilisateurs de l'organisation", true],
-  ["public", "Public", "Utilisateurs portail : pas encore disponible", false],
+  ["public", "Public", "Partageable en lecture seule avec des invités externes par e-mail", true],
 ];
 
 const OPTIONS = {
@@ -64,6 +65,8 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
   async function saveVisibility(value) {
     if (value === visibility) return;
     if (value === "private" && !window.confirm("Passer ce projet en privé ? Seuls ses membres (vous en faites partie), les responsables et les administrateurs pourront encore le voir. Les autres personnes le perdront de vue immédiatement.")) return;
+    if (value === "public" && !window.confirm("Passer ce projet en public ? Vous pourrez inviter des personnes extérieures à l'organisation par e-mail. Elles verront, en lecture seule, le nom du projet, sa description et ses tâches (titres, statuts, échéances) — jamais les commentaires, pièces jointes, temps passé ni les personnes assignées.")) return;
+    if (visibility === "public" && !window.confirm("Quitter le niveau « public » ? Toutes les invitations en cours seront révoquées : les invités perdront l'accès immédiatement.")) return;
     setSaving(true);
     try {
       const { assigneesWithoutAccess, ...updated } = await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { visibility: value });
@@ -99,7 +102,7 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
       <header>
         <span className="set-title">
           <i className="set-dot" style={{ background: `var(--pj-${colorIdx})` }} aria-hidden="true" />
-          <span><small>Paramètres du projet</small><strong>{project.name}{visibility === "private" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="lock" size={14} />Privé</span>}</strong></span>
+          <span><small>Paramètres du projet</small><strong>{project.name}{visibility === "private" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="lock" size={14} />Privé</span>}{visibility === "public" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="globe" size={14} />Public</span>}</strong></span>
         </span>
         {onClose && <button type="button" className="icon-btn" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>}
       </header>
@@ -107,11 +110,14 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
         <div className="set-tabs" role="tablist">
           <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>Paramètres</button>
           <button role="tab" aria-selected={tab === "members"} className={tab === "members" ? "on" : ""} onClick={() => setTab("members")}>Membres</button>
+          {visibility === "public" && <button role="tab" aria-selected={tab === "sharing"} className={tab === "sharing" ? "on" : ""} onClick={() => setTab("sharing")}>Partage</button>}
           <button role="tab" aria-selected={tab === "description"} className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
         </div>
 
         {tab === "members" ? (
           <ProjectMembers orgId={orgId} project={project} people={people} canList={canList} onChange={onMembersChange} onLeave={onLeave} />
+        ) : tab === "sharing" && visibility === "public" ? (
+          <ProjectSharing orgId={orgId} project={project} />
         ) : tab === "description" ? (
           project.description
             ? <p className="panel-desc set-box">{project.description}</p>
@@ -137,7 +143,9 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
               <p className="muted small" style={{ margin: "10px 0 0" }}>
                 {visibility === "private"
                   ? "Les membres se gèrent dans l'onglet « Membres »."
-                  : "Passer en privé limite l'accès aux membres du projet (onglet « Membres »)."}
+                  : visibility === "public"
+                    ? "Les invités externes se gèrent dans l'onglet « Partage »."
+                    : "Passer en privé limite l'accès aux membres du projet (onglet « Membres »)."}
               </p>
             </section>
             <div className="set-cols">
