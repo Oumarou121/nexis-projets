@@ -41,7 +41,7 @@ router.get("/", async (req, res) => {
 
   const { data: rows, error } = await db
     .from("tasks")
-    .select("id, title, status, priority, due_date, start_date, is_milestone, parent_id")
+    .select("id, title, status, stage_id, priority, due_date, start_date, is_milestone, parent_id")
     .eq("project_id", project.id)
     .order("created_at", { ascending: true })
     .limit(1000);
@@ -52,11 +52,18 @@ router.get("/", async (req, res) => {
     await db.from("project_guests").update({ last_access_at: new Date().toISOString() }).eq("id", guest.id);
   }
 
+  const { data: stageRows } = await db.from("project_stages").select("id, name, category, color, position").eq("project_id", project.id).order("position", { ascending: true });
+  const stages = stageRows ?? [];
+  const stageName = new Map(stages.map((st) => [st.id, st.name]));
+  const stageColor = new Map(stages.map((st) => [st.id, st.color ?? null]));
   const today = new Date().toISOString().slice(0, 10);
   const tasks = (rows ?? []).map((t) => ({
     id: t.id,
     title: t.title,
     status: t.status,
+    stageId: t.stage_id ?? null,
+    stage: stageName.get(t.stage_id) ?? null,
+    stageColor: stageColor.get(t.stage_id) ?? null,
     priority: t.priority,
     dueDate: t.due_date ?? null,
     startDate: t.start_date ?? null,
@@ -71,6 +78,7 @@ router.get("/", async (req, res) => {
       done: tasks.filter((t) => t.status === "done").length,
       late: tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < today).length,
     },
+    stages: stages.map((st) => ({ id: st.id, name: st.name, category: st.category, color: st.color ?? null })),
     tasks,
   });
 });

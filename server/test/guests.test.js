@@ -129,9 +129,10 @@ describe("portail : ce que voit un invité", () => {
     const { token } = await invited("lecteur@client.fr");
     const r = await portal(token);
     assert.equal(r.status, 200);
-    assert.deepEqual(Object.keys(r.json).sort(), ["guest", "project", "stats", "tasks"]);
+    assert.deepEqual(Object.keys(r.json).sort(), ["guest", "project", "stages", "stats", "tasks"]);
+    assert.ok(r.json.stages.every((st) => JSON.stringify(Object.keys(st).sort()) === JSON.stringify(["category", "id", "name"])), "étapes : nom et catégorie seulement");
     assert.deepEqual(Object.keys(r.json.project).sort(), ["color", "description", "dueDate", "name", "status"]);
-    assert.deepEqual(Object.keys(r.json.tasks[0]).sort(), ["dueDate", "id", "isMilestone", "parentId", "priority", "startDate", "status", "title"]);
+    assert.deepEqual(Object.keys(r.json.tasks[0]).sort(), ["dueDate", "id", "isMilestone", "parentId", "priority", "stage", "stageColor", "stageId", "startDate", "status", "title"]);
     assert.deepEqual(r.json.tasks.map((t) => t.title), ["Maquettes", "Livraison"], "uniquement les tâches de CE projet");
     assert.deepEqual(r.json.stats, { total: 2, done: 1, late: 1 });
     const raw = JSON.stringify(r.json);

@@ -1,7 +1,8 @@
 import { api } from "./api.js";
 import { usePerms } from "./perms.js";
-import { Icon } from "./ui.jsx";
-import { STATUS_COLOR, TASK_STATUS, isLate, shortDate } from "./labels.js";
+import { Icon, Spin } from "./ui.jsx";
+import { useEffect, useState } from "react";
+import { taskColor, isLate, stageLabel, shortDate } from "./labels.js";
 
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -14,8 +15,11 @@ function relDue(d) {
 }
 
 /** Liste des jalons du projet (tâches marquées « jalon ») avec leur avancement global. */
-export default function Milestones({ orgId, projectId, tasks, onOpen, onChange }) {
+export default function Milestones({ orgId, projectId, tasks, onOpen, onChange, onBusy }) {
   const { canEdit } = usePerms();
+  const [pending, setPending] = useState(null); // id du jalon en cours de modification
+  const [err, setErr] = useState("");
+  useEffect(() => { onBusy?.(pending !== null); return () => onBusy?.(false); }, [pending, onBusy]);
   // Terminés en bas ; le reste par échéance (sans date en dernier).
   const ms = (tasks?.filter((t) => t.isMilestone) || []).sort((a, b) => {
     if ((a.status === "done") !== (b.status === "done")) return a.status === "done" ? 1 : -1;
@@ -27,17 +31,23 @@ export default function Milestones({ orgId, projectId, tasks, onOpen, onChange }
   const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   async function toggleMilestone(task) {
+    if (pending) return;
+    setPending(task.id);
+    setErr("");
     try {
       const base = `/api/organizations/${orgId}/projects/${projectId}/tasks`;
       const updated = await api(`${base}/${task.id}`, "PATCH", { isMilestone: !task.isMilestone });
       onChange?.(updated);
     } catch (e) {
-      console.error(e);
+      setErr(e.message);
+    } finally {
+      setPending(null);
     }
   }
 
   return (
-    <div className="ms2">
+    <div className="ms2" aria-busy={!!pending}>
+      {err && <p className="error" role="alert" style={{ padding: 0 }}>{err}</p>}
       <div className="ms-sum">
         <div className="ms-ring" style={{ "--p": progress }} aria-hidden="true"><span>{progress}%</span></div>
         <div>
@@ -63,13 +73,13 @@ export default function Milestones({ orgId, projectId, tasks, onOpen, onChange }
                       <span className={done ? "done" : ""}>{m.title}</span>
                     </button>
                     <span className="ms-meta">
-                      <span className="ms-st"><i className="dot" style={{ background: STATUS_COLOR[m.status] }} />{TASK_STATUS[m.status]}</span>
+                      <span className="ms-st"><i className="dot" style={{ background: taskColor(m) }} />{stageLabel(m)}</span>
                       {m.dueDate ? (
                         <span className={lt ? "late" : "muted"}><Icon name="calendar" size={13} /> {shortDate(m.dueDate)}{!done && ` · ${relDue(m.dueDate)}`}</span>
                       ) : <span className="muted">Sans échéance</span>}
                     </span>
                   </div>
-                  {canEdit && <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} onClick={() => toggleMilestone(m)}><Icon name="close" size={15} /></button>}
+                  {canEdit && <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} disabled={!!pending} onClick={() => toggleMilestone(m)}>{pending === m.id ? <Spin size={15} /> : <Icon name="close" size={15} />}</button>}
                 </div>
               </li>
             );

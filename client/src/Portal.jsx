@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { PRIORITY, PROJECT_STATUS, STATUS_COLOR, TASK_STATUS, todayISO } from "./labels.js";
+import { PRIORITY, PROJECT_STATUS, taskColor, TASK_STATUS, todayISO } from "./labels.js";
 import "./portal.css";
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
-const ORDER = ["in_progress", "review", "todo", "done"];
+const ORDER = ["in_progress", "todo", "done"];
 const day = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "");
 
 /** Jeton d'invitation : dans le fragment « #/p/<jeton> » (jamais envoyé à un serveur). */
@@ -44,6 +44,12 @@ export default function Portal({ token }) {
     const subs = new Map();
     for (const t of tasks) if (t.parentId) subs.set(t.parentId, [...(subs.get(t.parentId) ?? []), t]);
     const roots = tasks.filter((t) => !t.parentId || !tasks.some((p) => p.id === t.parentId));
+    // Étapes du projet (ordre du projet) ; à défaut, les catégories.
+    if (data?.stages?.length) {
+      return data.stages
+        .map((st) => ({ status: st.id, label: st.name, items: roots.filter((t) => t.stageId === st.id).map((t) => ({ ...t, subs: subs.get(t.id) ?? [] })) }))
+        .filter((g) => g.items.length > 0);
+    }
     return ORDER.map((s) => ({ status: s, items: roots.filter((t) => t.status === s).map((t) => ({ ...t, subs: subs.get(t.id) ?? [] })) })).filter((g) => g.items.length > 0);
   }, [data]);
 
@@ -64,7 +70,7 @@ export default function Portal({ token }) {
 
   const Row = ({ t, sub }) => (
     <li className={`pt-task ${sub ? "sub" : ""}`}>
-      <i className="pt-dot" style={{ background: STATUS_COLOR[t.status] }} aria-hidden="true" />
+      <i className="pt-dot" style={{ background: taskColor(t) }} aria-hidden="true" />
       <span className="pt-title">{t.isMilestone && <span className="pt-ms" title="Jalon" aria-label="Jalon">◆ </span>}{t.title}</span>
       {(t.priority === "high" || t.priority === "urgent") && t.status !== "done" && <span className="pt-chip warn">{PRIORITY[t.priority]}</span>}
       {t.dueDate && <span className={`pt-due ${late(t) ? "late" : ""}`}>{late(t) ? "En retard · " : ""}{day(t.dueDate)}</span>}
@@ -100,7 +106,7 @@ export default function Portal({ token }) {
 
       {groups.map((g) => (
         <section key={g.status} className="pt-card">
-          <h2>{TASK_STATUS[g.status]} <span className="pt-count">{g.items.length}</span></h2>
+          <h2>{g.label ?? TASK_STATUS[g.status]} <span className="pt-count">{g.items.length}</span></h2>
           <ul className="pt-list">
             {g.items.map((t) => (
               <li key={t.id} className="pt-group">

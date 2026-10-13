@@ -8,6 +8,7 @@ import activity from "./routes/activity.js";
 import search from "./routes/search.js";
 import notifications from "./routes/notifications.js";
 import portal from "./routes/portal.js";
+import { templateRouter } from "./routes/stages.js";
 
 const app = express();
 // Derrière un proxy (Render, Nginx…), TRUST_PROXY=1 : sans cela, tous les visiteurs partagent l'IP du proxy
@@ -41,6 +42,7 @@ app.use("/api/organizations/:orgId/search", requireAuth, search);
 app.use("/api/portal", portal);
 app.use("/api/organizations/:orgId/notifications", requireAuth, notifications);
 app.use("/api/organizations/:orgId/my-tasks", requireAuth, myTasks);
+app.use("/api/organizations/:orgId/stage-template", requireAuth, templateRouter);
 app.use("/api/organizations/:orgId/projects", requireAuth, projects);
 
 // Express 5 relaie les promesses rejetées des handlers async vers ce gestionnaire.

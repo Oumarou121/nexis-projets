@@ -5,7 +5,7 @@ import Tasks from "./Tasks.jsx";
 import MyTasks from "./MyTasks.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Activity from "./Activity.jsx";
-import { Icon, Menu, NavMenu } from "./ui.jsx";
+import { ErrorState, Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
@@ -131,7 +131,7 @@ export default function App() {
         </div>
       </nav>
       <main className="page">
-        {err && <p className="error">{err}</p>}
+        {err && (orgId ? <div className="content"><ErrorState compact message={err} /></div> : <ErrorState message={err} />)}
         {orgId && project ? (
           <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (

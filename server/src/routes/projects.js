@@ -9,6 +9,8 @@ import { pathsForTasks, removeFiles } from "../storage.js";
 import { VISIBILITIES, addMember, assigneesWithoutAccess, getScope, isFullAccess, projectGuard, removeMember } from "../access.js";
 import members from "./members.js";
 import guests, { revokeAllGuests } from "./guests.js";
+import stages from "./stages.js";
+import { seedStages } from "../stages.js";
 
 const STATUSES = ["planned", "active", "on_hold", "done"];
 const COLS = "id, organization_id, name, description, status, priority, due_date, settings, visibility, color, created_by, created_at, updated_at";
@@ -90,6 +92,7 @@ router.use("/:projectId", projectGuard);
 router.use("/:projectId/members", members);
 router.use("/:projectId/guests", guests);
 router.use("/:projectId/tasks", tasks);
+router.use("/:projectId/stages", stages);
 router.use("/:projectId/dependencies", projectDependencies);
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
@@ -158,6 +161,13 @@ router.post("/", requirePermission("projects.create"), async (req, res) => {
       .select(COLS)
       .single(),
   );
+  // Étapes du nouveau projet : copie du modèle de l'organisation. En cas d'échec, elles seront créées
+  // au premier accès (projectStages) : on ne bloque pas la création.
+  try {
+    await seedStages(row.id, req.params.orgId);
+  } catch (e) {
+    console.warn("[projets] étapes initiales non créées :", e.message);
+  }
   // Le créateur est le premier membre. Pour un projet privé, c'est indispensable : on annule la
   // création plutôt que de laisser un projet que personne (hors responsables) ne peut ouvrir.
   try {

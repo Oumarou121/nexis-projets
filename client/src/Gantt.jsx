@@ -12,7 +12,7 @@ const fromISO = (iso) => {
 /** Couleur d'une barre : en retard = rouge, sinon selon le statut. */
 function barColor(t) {
   if (isLate(t)) return "var(--bad)";
-  return { done: "var(--st-done)", in_progress: "var(--st-progress)", review: "var(--st-review)", todo: "var(--st-todo)" }[t.status] ?? "var(--st-todo)";
+  return { done: "var(--st-done)", in_progress: "var(--st-progress)", todo: "var(--st-todo)" }[t.status] ?? "var(--st-todo)";
 }
 
 const ROW_H = 34;
@@ -162,7 +162,7 @@ export default function Gantt({ tasks, dependencies = [], members, onChange, onO
         <button type="button" className="pl-today" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>Aujourd'hui</button>
         <strong className="plan-month">{label}</strong>
         <ul className="plan-legend" aria-label="Légende">
-          {[["todo", "var(--st-todo)"], ["in_progress", "var(--st-progress)"], ["review", "var(--st-review)"], ["done", "var(--st-done)"], ["late", "var(--bad)"]].map(([k, c]) => (
+          {[["todo", "var(--st-todo)"], ["in_progress", "var(--st-progress)"], ["done", "var(--st-done)"], ["late", "var(--bad)"]].map(([k, c]) => (
             <li key={k}><i style={{ background: c }} />{k === "late" ? "En retard" : TASK_STATUS[k]}</li>
           ))}
         </ul>
@@ -213,7 +213,7 @@ export default function Gantt({ tasks, dependencies = [], members, onChange, onO
                       onFocus={() => setHover(task.id)}
                       onBlur={() => setHover(null)}
                       style={{ gridRow: 1, gridColumn: `${from + 2} / ${to + 3}`, background: barColor(task) }}
-                      title={`${task.title} · ${TASK_STATUS[task.status]} · ${range}`}
+                      title={`${task.title} · ${task.stage ?? TASK_STATUS[task.status]} · ${range}`}
                       onClick={() => { if (!justDragged.current) onOpen(task); }}
                       onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onOpen(task); } }}
                       onContextMenu={(ev) => { if (onSidebar) { ev.preventDefault(); onSidebar(task); } }}

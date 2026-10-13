@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
-import { ColorPicker, Icon } from "./ui.jsx";
+import { BusyLabel, ColorPicker, ErrorState, Icon } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS, memberName, projectColor, todayISO } from "./labels.js";
 import "./members.css";
 
@@ -83,10 +83,10 @@ function NewProjectDialog({ base, onClose, onCreated }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => e.key === "Escape" && !busy && onClose(); // fermeture impossible pendant l'appel serveur
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   async function submit(e) {
     e.preventDefault();
@@ -110,16 +110,16 @@ function NewProjectDialog({ base, onClose, onCreated }) {
   }
 
   return (
-    <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <form className="pj-md" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="pj-md-t">
+    <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
+      <form className="pj-md" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="pj-md-t" aria-busy={busy}>
         <div className="pj-mh">
           <div>
             <h2 id="pj-md-t">Créer un projet</h2>
             <p>Seul le nom est obligatoire. Le reste se règle plus tard.</p>
           </div>
-          <button type="button" className="pj-x" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>
+          <button type="button" className="pj-x" aria-label="Fermer" disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button>
         </div>
-        <div className="pj-mb">
+        <div className={`pj-mb ${busy ? "bs-inert" : ""}`} inert={busy ? "" : undefined}>
           <div className="pj-f">
             <label htmlFor="np-name">Nom du projet</label>
             <input id="np-name" type="text" autoFocus placeholder="Ex. : Refonte du site" value={form.name} onChange={set("name")} />
@@ -159,8 +159,8 @@ function NewProjectDialog({ base, onClose, onCreated }) {
         </div>
         <div className="pj-mf">
           <small>Vous pourrez inviter l'équipe et régler les options ensuite.</small>
-          <button type="button" className="pj-ghost" onClick={onClose}>Annuler</button>
-          <button className="pj-ok" disabled={form.name.trim().length < 2 || busy}>Créer le projet</button>
+          <button type="button" className="pj-ghost" disabled={busy} onClick={onClose}>Annuler</button>
+          <button className={`pj-ok bs ${busy ? "bs-run" : ""}`} disabled={form.name.trim().length < 2 || busy}><BusyLabel busy={busy}>Créer le projet</BusyLabel></button>
         </div>
       </form>
     </div>
@@ -378,7 +378,7 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
         </label>
       </div>
 
-      {err && <p className="error" role="alert" style={{ padding: 0 }}>{err}</p>}
+      {err && <ErrorState compact message={err} />}
 
       {busy && (view === "cards" ? <ProjectCardsSkeleton /> : <ProjectTimelineSkeleton />)}
       {!busy && shown.length > 0 && view === "timeline" && <Timeline list={shown} members={members} onOpen={onOpen} />}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Avatar, Icon } from "./ui.jsx";
+import { Avatar, ErrorState, Icon } from "./ui.jsx";
 import { DashboardSkeleton } from "./Skeleton.jsx";
 import { PROJECT_STATUS, STATUS_COLOR, TASK_STATUS, memberName } from "./labels.js";
 
@@ -46,7 +46,7 @@ export default function Dashboard({ orgId, members, ready = true, onShowMine }) 
     api(`/api/organizations/${orgId}/dashboard`).then(setD).catch((e) => setErr(e.message));
   }, [orgId]);
 
-  if (err) return <p className="error db-err">{err}</p>;
+  if (err) return <ErrorState message={err} />;
   if (!d || !ready) return <DashboardSkeleton />;
 
   const open = d.tasksTotal - d.tasksByStatus.done;

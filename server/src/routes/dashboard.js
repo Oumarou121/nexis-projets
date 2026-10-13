@@ -31,7 +31,8 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const projectsByStatus = { planned: 0, active: 0, on_hold: 0, done: 0 };
   for (const p of projects) projectsByStatus[p.status] += 1;
 
-  const tasksByStatus = { todo: 0, in_progress: 0, review: 0, done: 0 };
+  // Par catégorie d'étape (les étapes sont propres à chaque projet : seule la catégorie est comparable).
+  const tasksByStatus = { todo: 0, in_progress: 0, done: 0 };
   const load = new Map(); // assignee_id -> { open, late }
   let late = 0;
   let unassigned = 0;

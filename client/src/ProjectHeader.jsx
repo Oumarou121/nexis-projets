@@ -4,6 +4,7 @@ import { api } from "./api.js";
 import { DateField, Icon, Menu } from "./ui.jsx";
 import { PRIORITY, PROJECT_STATUS } from "./labels.js";
 import "./members.css";
+import { confirmDialog } from "./confirm.jsx";
 
 /** Nom du projet, modifiable sur place (dans le fil d'Ariane du panneau de contrôle). */
 export function ProjectTitle({ orgId, project, onChange }) {
@@ -52,13 +53,12 @@ export default function ProjectHeader({ orgId, project, onChange, onDeleted }) {
   }
 
   async function remove() {
-    if (!window.confirm(`Supprimer le projet « ${project.name} » et toutes ses tâches ?`)) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "alert", title: "Supprimer le projet ?", text: "Toutes ses tâches, commentaires, fichiers, feuilles de temps et invitations seront supprimés. Cette action est définitive.", ...(project.taskCount ? { list: [`${project.taskCount} tâche${project.taskCount > 1 ? "s" : ""}`] } : {}), field: { label: "Pour confirmer, tapez le nom du projet", match: project.name }, ok: "Supprimer le projet",
+      run: async () => {
       await api(url, "DELETE");
       onDeleted();
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   return (

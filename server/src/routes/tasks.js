@@ -12,19 +12,23 @@ import statusHistory from "./statusHistory.js";
 import { pathsForTasks, removeFiles } from "../storage.js";
 import { changedFields, logActivity } from "../activity.js";
 import { recordStatus } from "../history.js";
+import { projectStages, resolveStage, stageInput } from "../stages.js";
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/tasks.
 // Droits : lecture = projects.read ; créer / modifier / supprimer = projects.update.
 // Affecter quelqu'un exige en plus de pouvoir lister les membres dans NEXIS Identity.
-const STATUSES = ["todo", "in_progress", "review", "done"];
-const COLS = "id, project_id, title, description, status, priority, assignee_id, start_date, due_date, labels, parent_id, is_milestone, created_by, created_at, updated_at";
+const COLS = "id, project_id, title, description, status, stage_id, priority, assignee_id, start_date, due_date, labels, parent_id, is_milestone, created_by, created_at, updated_at";
 
-const toApi = (r) => ({
+// `stages` : Map id → étape du projet (nom affiché). status = catégorie de l'étape (todo / in_progress / done).
+const toApi = (r, stages) => ({
   id: r.id,
   projectId: r.project_id,
   title: r.title,
   description: r.description,
   status: r.status,
+  stageId: r.stage_id ?? null,
+  stage: stages?.get(r.stage_id)?.name ?? null,
+  stageColor: stages?.get(r.stage_id)?.color ?? null,
   priority: r.priority,
   assigneeId: r.assignee_id,
   startDate: r.start_date ?? null,
@@ -50,10 +54,6 @@ function parse(body, { partial }) {
     const d = body.description === null ? "" : String(body.description).trim();
     if (d.length > 4000) throw httpError(400, "Description trop longue (4000 caractères).");
     out.description = d || null;
-  }
-  if (has("status")) {
-    if (!STATUSES.includes(body.status)) throw httpError(400, "Statut invalide.");
-    out.status = body.status;
   }
   if (has("priority")) {
     if (!PRIORITIES.includes(body.priority)) throw httpError(400, "Priorité invalide.");
@@ -137,6 +137,7 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("tasks").select(COLS).eq("project_id", req.params.projectId).order("created_at", { ascending: true }),
   );
+  const stages = new Map((await projectStages(req.params.projectId, req.params.orgId)).map((st) => [st.id, st]));
 
   // Nombre de commentaires par tâche. Sans la migration des commentaires, on n'empêche pas
   // d'afficher les tâches : on le signale dans le terminal et les compteurs restent à 0.
@@ -152,13 +153,18 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
     if (files.error) console.warn("[attachments] compteurs indisponibles :", files.error.message);
     for (const c of files.data ?? []) fileCounts.set(c.task_id, (fileCounts.get(c.task_id) ?? 0) + 1);
   }
-  res.json(rows.map((r) => ({ ...toApi(r), commentCount: counts.get(r.id) ?? 0, attachmentCount: fileCounts.get(r.id) ?? 0 })));
+  res.json(rows.map((r) => ({ ...toApi(r, stages), commentCount: counts.get(r.id) ?? 0, attachmentCount: fileCounts.get(r.id) ?? 0 })));
 });
 
 router.post("/", requirePermission("projects.update"), async (req, res) => {
   const f = parse(req.body, { partial: false });
   const project = await assertProject(req.params);
   await assertAssignee(req, f.assignee_id);
+  // Étape de départ : celle demandée (stageId, ou 1re étape d'une catégorie), sinon la première du projet.
+  const stageList = await projectStages(req.params.projectId, req.params.orgId);
+  const stageIn = stageInput(req.body);
+  const stage = stageIn.stageId || stageIn.status ? resolveStage(stageList, stageIn) : stageList[0];
+  const stages = new Map(stageList.map((st) => [st.id, st]));
   if (f.parent_id) {
     const parent = unwrap(
       await db.from("tasks").select("id, parent_id").eq("id", f.parent_id).eq("project_id", req.params.projectId).maybeSingle(),
@@ -169,11 +175,11 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
   const row = unwrap(
     await db
       .from("tasks")
-      .insert({ ...f, project_id: req.params.projectId, created_by: req.auth.userId })
+      .insert({ ...f, stage_id: stage.id, status: stage.category, project_id: req.params.projectId, created_by: req.auth.userId })
       .select(COLS)
       .single(),
   );
-  await recordStatus({ taskId: row.id, status: row.status, actorId: req.auth.userId, at: row.created_at });
+  await recordStatus({ taskId: row.id, stageId: row.stage_id, status: row.status, actorId: req.auth.userId, at: row.created_at });
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "create", entityType: "task",
     entityId: row.id, projectId: row.project_id, label: row.title,
@@ -184,14 +190,20 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
     },
   });
   if (row.assignee_id) await notifyAssigned(req, row);
-  res.status(201).json(toApi(row));
+  res.status(201).json(toApi(row, stages));
 });
 
 router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   const f = parse(req.body, { partial: true });
-  if (Object.keys(f).length === 0) throw httpError(400, "Aucune modification.");
+  const stageIn = stageInput(req.body);
+  const wantsStage = !!(stageIn.stageId || stageIn.status);
+  if (Object.keys(f).length === 0 && !wantsStage) throw httpError(400, "Aucune modification.");
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Tâche introuvable.");
   const project = await assertProject(req.params);
+  const stageList = await projectStages(req.params.projectId, req.params.orgId);
+  const stages = new Map(stageList.map((st) => [st.id, st]));
+  const stage = wantsStage ? resolveStage(stageList, stageIn) : null; // « status » seul = 1re étape de cette catégorie
+  if (stage) Object.assign(f, { stage_id: stage.id, status: stage.category });
   await assertAssignee(req, f.assignee_id);
   if (f.start_date !== undefined || f.due_date !== undefined) {
     // Une seule des deux dates change : on compare avec celle déjà enregistrée.
@@ -200,8 +212,8 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
     const due = f.due_date !== undefined ? f.due_date : cur?.due_date;
     if (start && due && start > due) throw httpError(400, "La date de début doit précéder l'échéance.");
   }
-  const previous = f.status || f.assignee_id !== undefined
-    ? unwrap(await db.from("tasks").select("status, assignee_id").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
+  const previous = f.stage_id || f.assignee_id !== undefined
+    ? unwrap(await db.from("tasks").select("stage_id, assignee_id").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
     : null;
   const row = unwrap(
     await db
@@ -214,15 +226,15 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   );
   if (!row) throw httpError(404, "Tâche introuvable.");
   if (f.assignee_id !== undefined && row.assignee_id && previous?.assignee_id !== row.assignee_id) await notifyAssigned(req, row);
-  if (f.status && previous && previous.status !== row.status) {
-    await recordStatus({ taskId: row.id, status: row.status, actorId: req.auth.userId });
+  if (f.stage_id && previous && previous.stage_id !== row.stage_id) {
+    await recordStatus({ taskId: row.id, stageId: row.stage_id, status: row.status, actorId: req.auth.userId });
   }
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "update", entityType: "task",
     entityId: row.id, projectId: row.project_id, label: row.title,
-    details: { project: project.name, ...changedFields(f) },
+    details: { project: project.name, ...changedFields(f), ...(stage ? { stage: stage.name } : {}) },
   });
-  res.json(toApi(row));
+  res.json(toApi(row, stages));
 });
 
 router.delete("/:id", requirePermission("projects.update"), async (req, res) => {

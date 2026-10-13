@@ -22,6 +22,16 @@ Le module envoie aussi des e-mails (Resend) et des notifications push (Firebase)
 - [ ] Relever l'URL du projet et la clé **service_role** (Settings → API). Cette clé ne va **que** dans le serveur.
 - [ ] Activer les sauvegardes du projet (selon le plan Supabase) et noter qui peut restaurer.
 
+
+### Étapes (statuts) personnalisables — migration `20261013090000_project_stages.sql`
+- [ ] Exécuter cette migration **avant** de déployer le nouveau serveur (il lit `tasks.stage_id`). Elle convertit les données existantes : chaque projet reçoit les 4 étapes historiques (À faire, En cours, En revue, Terminée), chaque tâche rejoint l'étape de son ancien statut, et « review » devient la catégorie « en cours ». À exécuter **une seule fois**.
+- [ ] Après la migration : ouvrir un projet → ⚙ → onglet **Étapes** (créer, renommer, réordonner, supprimer ; la catégorie À faire / En cours / Terminé sert aux retards et aux rapports).
+- [ ] Modèle de l'organisation : onglet Étapes → « Utiliser les étapes de ce projet comme modèle » (droit `projects.create`). Il ne s'applique qu'aux nouveaux projets.
+
+### Couleur par étape — migration `20261014090000_stage_colors.sql`
+- [ ] Exécuter cette migration **après** `20261013090000_project_stages.sql` et **avant** de lancer le nouveau serveur (il lit la colonne `color`). Elle ajoute une colonne `color` (0 à 7, vide = couleur de la catégorie) aux étapes et au modèle de l'organisation. Les étapes existantes ne changent pas d'aspect.
+- [ ] Choisir une couleur : ⚙ du projet → onglet Étapes → pastille de couleur à gauche de chaque étape.
+
 ## 2. Serveur Node
 Démarrage : `npm start -w server` (ou `node server/src/index.js`). Les variables viennent de
 l'hébergeur ; le fichier `.env` n'est utilisé qu'en développement (`npm run dev`).

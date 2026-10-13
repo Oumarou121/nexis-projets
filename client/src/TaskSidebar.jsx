@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Avatar, Icon } from "./ui.jsx";
-import { PRIORITY, STATUS_COLOR, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
+import { PRIORITY, taskColor, isLate, stageLabel, memberName, shortDate } from "./labels.js";
 
 export default function TaskSidebar({ task, members, onClose, onOpenDetail }) {
   const [open] = useState(true);
@@ -29,7 +29,7 @@ export default function TaskSidebar({ task, members, onClose, onOpenDetail }) {
 
         <h3 className="sb-title">{task.title}</h3>
         <div className="sb-pills">
-          <span className="sb-pill"><i className="dot" style={{ background: STATUS_COLOR[task.status] }} />{TASK_STATUS[task.status]}</span>
+          <span className="sb-pill"><i className="dot" style={{ background: taskColor(task) }} />{stageLabel(task)}</span>
           <span className={`sb-pill p-${task.priority}`}><Icon name="flag" size={13} />{PRIORITY[task.priority]}</span>
         </div>
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Avatar, Icon } from "./ui.jsx";
+import { Avatar, ErrorState, Icon } from "./ui.jsx";
 import { ActivitySkeleton, Skel } from "./Skeleton.jsx";
 import { PRIORITY, PROJECT_STATUS, TASK_STATUS, memberName } from "./labels.js";
 
@@ -23,7 +23,8 @@ function summary(e, nameOf) {
   if (d.name) parts.push(`nom → « ${d.name} »`);
   if (d.title) parts.push(`titre → « ${d.title} »`);
   if (d.description) parts.push("description");
-  if (d.status) parts.push(`statut → ${(e.entityType === "task" ? TASK_STATUS : PROJECT_STATUS)[d.status] ?? d.status}`);
+  // Tâche : nom de l'étape (journal récent) ; anciennes entrées : catégorie, ou « En revue » (ancien statut).
+  if (d.status) parts.push(`statut → ${e.entityType === "task" ? d.stage ?? TASK_STATUS[d.status] ?? (d.status === "review" ? "En revue" : d.status) : PROJECT_STATUS[d.status] ?? d.status}`);
   if (d.priority) parts.push(`priorité → ${PRIORITY[d.priority] ?? d.priority}`);
   if ("due_date" in d) parts.push(d.due_date ? `échéance → ${d.due_date}` : "échéance retirée");
   if ("assignee_id" in d) parts.push(d.assignee_id ? `assignée à ${nameOf(d.assignee_id)}` : "désassignée");
@@ -94,7 +95,7 @@ export default function Activity({ orgId, members, ready = true, onOpenProject }
           {FILTERS.map(([v, l]) => <button key={v} type="button" className={kind === v ? "on" : ""} onClick={() => { setList(null); setKind(v); }}>{l}</button>)}
         </div>
       </div>
-      {err && <p className="error mt-err">{err}</p>}
+      {err && <div className="mt-err"><ErrorState compact message={err} /></div>}
       {(!list || !ready) && !err ? <ActivitySkeleton /> : (
       <div className="ac-feed fade-in">
         {days.map((day) => (

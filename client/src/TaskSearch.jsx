@@ -26,7 +26,7 @@ export function groupTasks(tasks, groupBy, members) {
   if (!groupBy) return [{ key: "all", label: null, items: tasks }];
   const map = new Map();
   const label = (t) => {
-    if (groupBy === "status") return TASK_STATUS[t.status];
+    if (groupBy === "status") return t.stage ?? TASK_STATUS[t.status];
     if (groupBy === "priority") return PRIORITY[t.priority];
     const m = members.find((x) => x.userId === t.assigneeId);
     return t.assigneeId ? (m ? memberName(m) : "Ancien membre") : "Non assignée";

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
-import { TASK_STATUS, STATUS_COLOR } from "./labels.js";
+import { TASK_STATUS, taskColor } from "./labels.js";
 import { Icon } from "./ui.jsx";
 
 /** Recherche globale (Ctrl/Cmd + K) : projets et tâches de l'organisation. */
@@ -77,7 +77,7 @@ export default function GlobalSearch({ orgId, onOpen }) {
         </>
       ) : (
         <>
-          <span className="gs-ic"><i className="gs-dot" style={{ background: STATUS_COLOR[it.t.status] }} /></span>
+          <span className="gs-ic"><i className="gs-dot" style={{ background: taskColor(it.t) }} /></span>
           <span className="gs-tx"><b>{it.t.title}</b><small>{it.t.projectName} · {TASK_STATUS[it.t.status] ?? it.t.status}</small></span>
         </>
       )}

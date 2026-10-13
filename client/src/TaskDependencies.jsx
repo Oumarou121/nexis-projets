@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { RowsSkeleton } from "./Skeleton.jsx";
-import { Icon } from "./ui.jsx";
-import { STATUS_COLOR, TASK_STATUS, isLate, shortDate } from "./labels.js";
+import { BusyLabel, Icon } from "./ui.jsx";
+import { taskColor, isLate, stageLabel, shortDate } from "./labels.js";
+import { confirmDialog } from "./confirm.jsx";
 
 /** Tâches qui doivent être terminées avant celle-ci. */
-export default function TaskDependencies({ orgId, projectId, taskId }) {
+export default function TaskDependencies({ orgId, projectId, taskId, onBusy }) {
   const { canEdit } = usePerms();
   const [dependencies, setDependencies] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { onBusy?.(saving); return () => onBusy?.(false); }, [saving, onBusy]); // verrouille la fiche tâche pendant l'envoi
   const [availableTasks, setAvailableTasks] = useState(null);
   const [selectedTask, setSelectedTask] = useState("");
   const [err, setErr] = useState("");
@@ -28,7 +31,8 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
   const available = (availableTasks ?? []).filter((t) => t.id !== taskId && !blockingIds.includes(t.id));
 
   async function addDependency() {
-    if (!selectedTask) return;
+    if (!selectedTask || saving) return;
+    setSaving(true);
     try {
       const created = await api(base, "POST", { dependsOnId: selectedTask });
       setDependencies((d) => [created, ...(d ?? [])]);
@@ -37,18 +41,19 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
       setErr("");
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setSaving(false);
     }
   }
 
   async function removeDependency(dep) {
-    if (!window.confirm("Supprimer cette dépendance ?")) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "link", title: "Supprimer cette dépendance ?", text: "Les deux tâches ne seront plus liées.", ok: "Supprimer",
+      run: async () => {
       await api(`${base}/${dep.id}`, "DELETE");
       setDependencies((d) => d.filter((x) => x.id !== dep.id));
       setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   const ready = !!dependencies && !!availableTasks;
@@ -72,7 +77,7 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
                   const lt = isLate(task);
                   return (
                     <li key={dep.id}>
-                      <span className="dp-st"><i style={{ background: STATUS_COLOR[task.status] }} />{TASK_STATUS[task.status]}</span>
+                      <span className="dp-st"><i style={{ background: taskColor(task) }} />{stageLabel(task)}</span>
                       <span className={`dp-title ${task.status === "done" ? "done" : ""}`}>{task.title}</span>
                       {task.dueDate && <span className={`dp-due ${lt ? "late" : "muted"}`}>{shortDate(task.dueDate)}{lt && " · en retard"}</span>}
                       {canEdit && <button type="button" className="ib2" title="Retirer la dépendance" aria-label={`Retirer la dépendance « ${task.title} »`} onClick={() => removeDependency(dep)}><Icon name="close" size={16} /></button>}
@@ -87,13 +92,13 @@ export default function TaskDependencies({ orgId, projectId, taskId }) {
         </div>
       )}
       {adding ? (
-        <div className="dp-add">
-          <select aria-label="Tâche bloquante" value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)}>
+        <div className={`dp-add ${saving ? "bs-inert" : ""}`} aria-busy={saving}>
+          <select aria-label="Tâche bloquante" disabled={saving} value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)}>
             <option value="">Sélectionner une tâche bloquante</option>
             {available.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
-          <button disabled={!selectedTask} onClick={addDependency}>Ajouter</button>
-          <button className="ghost" onClick={() => setAdding(false)}>Annuler</button>
+          <button className={`bs ${saving ? "bs-run" : ""}`} disabled={!selectedTask || saving} onClick={addDependency}><BusyLabel busy={saving}>Ajouter</BusyLabel></button>
+          <button className="ghost" disabled={saving} onClick={() => setAdding(false)}>Annuler</button>
         </div>
       ) : (
         canEdit && <button type="button" className="add-dash" disabled={!ready} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Ajouter une dépendance</button>

@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import { usePerms } from "./perms.js";
 import { Icon } from "./ui.jsx";
 import "./members.css";
+import { confirmDialog } from "./confirm.jsx";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "");
 const DURATIONS = [[7, "7 jours"], [30, "30 jours"], [90, "90 jours"], [365, "1 an"], [null, "Sans expiration"]];
@@ -13,13 +14,14 @@ const STATUS = { active: ["Actif", "ok"], expired: ["Expiré", "warn"], revoked:
  * L'invitant ne voit jamais le jeton ; si l'e-mail n'a pas pu partir, le serveur lui rend le lien
  * (à transmettre lui-même) et on l'affiche une seule fois ici.
  */
-export default function ProjectSharing({ orgId, project }) {
+export default function ProjectSharing({ orgId, project, onBusy }) {
   const { canEdit } = usePerms();
   const url = `/api/organizations/${orgId}/projects/${project.id}/guests`;
   const [rows, setRows] = useState(null);
   const [email, setEmail] = useState("");
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]); // verrouille la fermeture du modal parent
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState(null); // { text, link? }
 
@@ -57,12 +59,9 @@ export default function ProjectSharing({ orgId, project }) {
     });
   };
   const resend = (g) => run(async () => report(await api(`${url}/${g.id}/resend`, "POST", { expiresInDays: days }), g.email));
-  const revoke = (g) => {
-    if (!window.confirm(`Révoquer l'accès de ${g.email} ? Son lien cessera de fonctionner immédiatement.`)) return;
-    run(async () => {
-      await api(`${url}/${g.id}`, "DELETE");
-      setNotice(null);
-    });
+  const revoke = async (g) => {
+    await confirmDialog({ tone: "danger", icon: "link", title: "Révoquer cet accès ?", text: "Son lien cessera de fonctionner immédiatement.", chip: [g.email, "Invité · accès en lecture seule"], ok: "Révoquer l’accès", run: async () => { await api(`${url}/${g.id}`, "DELETE"); setNotice(null); await load(); } });
+    setErr("");
   };
 
   const active = (rows ?? []).filter((g) => g.status === "active").length;

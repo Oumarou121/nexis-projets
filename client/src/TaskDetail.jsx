@@ -5,8 +5,9 @@ import { CommentsSkeleton, RowsSkeleton } from "./Skeleton.jsx";
 import LabelChips from "./LabelChips.jsx";
 import TaskDependencies from "./TaskDependencies.jsx";
 import Timesheets from "./Timesheets.jsx";
-import { Avatar, DateField, Icon, PriorityStar } from "./ui.jsx";
-import { MAX_FILE_BYTES, PRIORITY, TASK_STATUS, fileSize, fmtDuration, isLate, memberName, stageDurations } from "./labels.js";
+import { Avatar, BusyLabel, DateField, Icon, PriorityStar, Spin } from "./ui.jsx";
+import { MAX_FILE_BYTES, PRIORITY, STATUS_COLOR, TASK_STATUS, stageColor, fileSize, fmtDuration, isLate, memberName, stageDurations } from "./labels.js";
+import { confirmDialog } from "./confirm.jsx";
 
 /** Sans accents ni majuscules : « é » et « E » se retrouvent en tapant « e ». */
 const fold = (v) => String(v).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -52,7 +53,7 @@ const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeti
  * champs sur deux colonnes, onglets, puis la discussion.
  * `pager` = { index, total, onPrev, onNext } pour passer d'une tâche à l'autre.
  */
-export default function TaskDetail({ orgId, projectId, projectName, task, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+export default function TaskDetail({ orgId, projectId, projectName, task, stages, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
   const { canEdit } = usePerms();
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
@@ -65,6 +66,10 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const [comments, setComments] = useState(null);
   const [files, setFiles] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadInfo, setUploadInfo] = useState(null); // { i, n, name } : fichier en cours d'envoi
+  const [actBusy, setActBusy] = useState(false); // création d'une activité
+  const [subBusy, setSubBusy] = useState(false); // ajout d'une sous-tâche
+  const [childBusy, setChildBusy] = useState(false); // dépendances / feuilles de temps
   const [text, setText] = useState("");
   const [mentioned, setMentioned] = useState({}); // { "@Nom": userId } choisis dans la liste de suggestions
   const [caret, setCaret] = useState(0);
@@ -74,6 +79,14 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("description");
   const [scheduling, setScheduling] = useState(false);
+  // Une action serveur est en cours : on ne quitte pas la fiche (Échap, fil d'Ariane, pagination, fermeture de l'onglet).
+  const locked = uploading || busy || actBusy || subBusy || childBusy;
+  useEffect(() => {
+    if (!locked) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [locked]);
   const [activities, setActivities] = useState(null);
   const [activityForm, setActivityForm] = useState({ type: "todo", summary: "", dueDate: "", assigneeId: "" });
   const base = `/api/organizations/${orgId}/projects/${projectId}/tasks/${task.id}/comments`;
@@ -104,7 +117,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     let alive = true;
     api(historyBase).then((h) => alive && setHistory(h)).catch(() => alive && setHistory(null));
     return () => { alive = false; };
-  }, [historyBase, task.status]);
+  }, [historyBase, task.stageId, task.status]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000);
@@ -113,11 +126,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const durations = stageDurations(history, now);
 
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && !["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) && onClose();
+    const onKey = (e) => e.key === "Escape" && !locked && !["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) && onClose();
     window.addEventListener("keydown", onKey);
-    window.scrollTo(0, 0);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, task.id]);
+  }, [onClose, locked]);
+  useEffect(() => { window.scrollTo(0, 0); }, [task.id]);
 
   async function saveTitle() {
     const v = title.trim();
@@ -150,8 +163,10 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
 
   async function addSub(e) {
     e.preventDefault();
-    if (!subTitle.trim()) return;
+    if (!subTitle.trim() || subBusy) return;
+    setSubBusy(true);
     const msg = await onAddSub(task, subTitle);
+    setSubBusy(false);
     setErr(msg ?? "");
     if (!msg) setSubTitle("");
   }
@@ -169,9 +184,12 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
       picked = picked.slice(0, room);
     }
     setUploading(true);
+    let rank = 0;
     for (const f of picked) {
+      rank += 1;
       if (f.size === 0) { msg = `« ${f.name} » est vide (les dossiers ne sont pas acceptés).`; continue; }
       if (f.size > MAX_FILE_BYTES) { msg = `« ${f.name} » dépasse 10 Mo.`; continue; }
+      setUploadInfo({ i: rank, n: picked.length, name: f.name });
       try {
         next = [...next, await upload(filesBase, f)];
         setFiles(next);
@@ -182,6 +200,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
       }
     }
     setErr(msg);
+    setUploadInfo(null);
     setUploading(false);
   }
 
@@ -217,16 +236,15 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   }
 
   async function removeFile(f) {
-    if (!window.confirm(`Supprimer le fichier « ${f.fileName} » ?`)) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "trash", title: "Supprimer ce fichier ?", text: "Le fichier sera retiré de la tâche. Cette action est définitive.", chip: [f.fileName], ok: "Supprimer",
+      run: async () => {
       await api(`${filesBase}/${f.id}`, "DELETE");
       const next = files.filter((x) => x.id !== f.id);
       setFiles(next);
       onFileCount(task.id, next.length);
       setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   // « @mot » juste avant le curseur → liste des membres (du projet si privé) dont le nom correspond.
@@ -294,21 +312,21 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   }
 
   async function remove(c) {
-    if (!window.confirm("Supprimer ce commentaire ?")) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "trash", title: "Supprimer ce commentaire ?", text: "Il disparaîtra de la discussion pour tout le monde.", ok: "Supprimer",
+      run: async () => {
       await api(`${base}/${c.id}`, "DELETE");
       const next = comments.filter((x) => x.id !== c.id);
       setComments(next);
       onCount(task.id, next.length);
       setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   async function createActivity(e) {
     e.preventDefault();
-    if (!activityForm.summary.trim()) return;
+    if (!activityForm.summary.trim() || actBusy) return;
+    setActBusy(true);
     try {
       const activity = await api(activitiesBase, "POST", {
         type: activityForm.type,
@@ -322,6 +340,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
       setErr("");
     } catch (e2) {
       setErr(e2.message);
+    } finally {
+      setActBusy(false);
     }
   }
 
@@ -336,14 +356,13 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   }
 
   async function removeActivity(activity) {
-    if (!window.confirm("Supprimer cette activité ?")) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "trash", title: "Supprimer cette activité ?", text: "Elle sera retirée de la tâche. Cette action est définitive.", ok: "Supprimer",
+      run: async () => {
       await api(`${activitiesBase}/${activity.id}`, "DELETE");
       setActivities((a) => a.filter((x) => x.id !== activity.id));
       setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   return (
@@ -352,8 +371,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
         <div className="cp-left">
           <div className="crumb2">
             <span className="up">
-              <button type="button" className="link" onClick={onProjects}>Projets</button> /
-              <button type="button" className="link" onClick={onClose}>{projectName}</button>
+              <button type="button" className="link" disabled={locked} onClick={onProjects}>Projets</button> /
+              <button type="button" className="link" disabled={locked} onClick={onClose}>{projectName}</button>
             </span>
             <span className="nm">{task.title}{task.isMilestone ? " · Jalon" : ""}</span>
           </div>
@@ -361,22 +380,23 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
         {pager && (
           <div className="cp-right pager">
             <span className="muted">{pager.index + 1} / {pager.total}</span>
-            <button type="button" className="icon-btn" aria-label="Tâche précédente" disabled={pager.total < 2} onClick={pager.onPrev}><Icon name="back" size={17} /></button>
-            <button type="button" className="icon-btn" aria-label="Tâche suivante" disabled={pager.total < 2} onClick={pager.onNext}><Icon name="chevronR" size={17} /></button>
+            <button type="button" className="icon-btn" aria-label="Tâche précédente" disabled={pager.total < 2 || locked} onClick={pager.onPrev}><Icon name="back" size={17} /></button>
+            <button type="button" className="icon-btn" aria-label="Tâche suivante" disabled={pager.total < 2 || locked} onClick={pager.onNext}><Icon name="chevronR" size={17} /></button>
           </div>
         )}
       </div>
       <div className="tp-body">
         <div className="stbar" role="group" aria-label="Statut">
-          {Object.entries(TASK_STATUS).map(([v, l], i, all) => {
+          {(stages?.length ? stages.map((s) => [s.id, s.name, stageColor(s)]) : Object.entries(TASK_STATUS).map(([k, n]) => [k, n, STATUS_COLOR[k]])).map(([v, l, col], i, all) => {
+            const here = stages?.length ? task.stageId : task.status;
             const d = durations[v];
-            const cur = task.status === v;
-            const past = i < all.findIndex(([k]) => k === task.status);
+            const cur = here === v;
+            const past = i < all.findIndex(([k]) => k === here);
             const tip = d ? `${cur ? "Dans cette étape depuis le" : "Dernière entrée le"} ${fmt(d.since)} · total ${fmtDuration(d.ms)}` : undefined;
             return (
               <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} disabled={!canEdit} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
                 {past ? <Icon name="check" size={15} /> : <b>{i + 1}</b>}
-                <span>{l}</span>
+                <span><i className="st-dot" style={{ background: col, display: "inline-block", marginRight: 6 }} aria-hidden="true" />{l}</span>
                 {d && <small className="dur">{fmtDuration(d.ms)}</small>}
               </button>
             );
@@ -457,7 +477,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                 <label htmlFor="task-ms">Jalon</label>
                 <span className="fv">
                   <span className="switch"><input id="task-ms" type="checkbox" disabled={!canEdit} checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
-                  <span className="muted small">Marquer comme étape clé</span>
+                  <label htmlFor="task-ms" className="muted small" style={{ cursor: canEdit ? "pointer" : "default" }}>Marquer comme étape clé</label>
                 </span>
               </div>
             </div>
@@ -525,17 +545,17 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
               <div className="empty-tab"><Icon name="subtask" size={22} /><b>Aucune sous-tâche</b><span>Découpez cette tâche en petites étapes à cocher.</span></div>
             )}
             {canEdit && <form onSubmit={addSub} className="addrow">
-              <input aria-label="Nouvelle sous-tâche" placeholder="Ajouter une sous-tâche…" value={subTitle} onChange={(e) => setSubTitle(e.target.value)} />
-              <button className="go" disabled={!subTitle.trim()}>Ajouter</button>
+              <input aria-label="Nouvelle sous-tâche" placeholder="Ajouter une sous-tâche…" readOnly={subBusy} value={subTitle} onChange={(e) => setSubTitle(e.target.value)} />
+              <button className={`go bs ${subBusy ? "bs-run" : ""}`} disabled={!subTitle.trim() || subBusy}><BusyLabel busy={subBusy}>Ajouter</BusyLabel></button>
             </form>}
           </div>
 
           {features.dependencies && (<div className={`tab-content ${tab === "dependencies" ? "on" : ""}`}>
-            <TaskDependencies orgId={orgId} projectId={projectId} taskId={task.id} />
+            <TaskDependencies orgId={orgId} projectId={projectId} taskId={task.id} onBusy={setChildBusy} />
           </div>)}
 
           {features.timesheets && (<div className={`tab-content ${tab === "timesheets" ? "on" : ""}`}>
-            <Timesheets orgId={orgId} projectId={projectId} taskId={task.id} members={members} />
+            <Timesheets orgId={orgId} projectId={projectId} taskId={task.id} members={members} onBusy={setChildBusy} />
           </div>)}
 
           <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...(canEdit ? dnd : {})}>
@@ -563,10 +583,10 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             {!canEdit ? null : (files?.length ?? 0) < MAX_FILES ? (
               <label className={`drop ${uploading ? "busy" : ""} ${dragging ? "over" : ""}`}>
                 <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
-                <Icon name="clip" size={18} />
+                {uploading ? <Spin size={22} /> : <Icon name="clip" size={18} />}
                 <span>
-                  <b>{uploading ? "Envoi en cours…" : dragging ? "Déposez pour envoyer" : "Glissez vos fichiers ici"}</b>
-                  <small>{uploading ? "Veuillez patienter" : "ou cliquez pour choisir · 10 Mo maximum par fichier"}</small>
+                  <b>{uploading ? (uploadInfo?.n > 1 ? `Envoi du fichier ${uploadInfo.i} sur ${uploadInfo.n}…` : "Envoi en cours…") : dragging ? "Déposez pour envoyer" : "Glissez vos fichiers ici"}</b>
+                  <small>{uploading ? (uploadInfo?.name ? `${uploadInfo.name} · ne quittez pas la fiche` : "Veuillez patienter") : "ou cliquez pour choisir · 10 Mo maximum par fichier"}</small>
                 </span>
               </label>
             ) : (
@@ -586,7 +606,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
             </div>
             {scheduling && (
               <div className="ta-form">
-                <form onSubmit={createActivity}>
+                <form onSubmit={createActivity} aria-busy={actBusy} inert={actBusy ? "" : undefined} className={actBusy ? "bs-inert" : ""}>
                   <div className="fg">
                     <div><label>Type</label>
                       <select value={activityForm.type} onChange={(e) => setActivityForm({ ...activityForm, type: e.target.value })}>
@@ -603,8 +623,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
                     </div>}
                   </div>
                   <div className="row" style={{ marginTop: "8px" }}>
-                    <button disabled={!activityForm.summary.trim()}>Planifier</button>
-                    <button type="button" className="ghost" onClick={() => setScheduling(false)}>Annuler</button>
+                    <button className={`bs ${actBusy ? "bs-run" : ""}`} disabled={!activityForm.summary.trim() || actBusy}><BusyLabel busy={actBusy}>Planifier</BusyLabel></button>
+                    <button type="button" className="ghost" disabled={actBusy} onClick={() => setScheduling(false)}>Annuler</button>
                   </div>
                 </form>
               </div>
@@ -668,7 +688,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           )}
           <div className="row">
             <span className="muted small" style={{ marginRight: "auto" }}>{text.length > 3500 ? `${text.length} / 4000` : "Ctrl + Entrée pour envoyer"}</span>
-            <button className="pj-ok" disabled={busy || !text.trim()}>Commenter</button>
+            <button className={`pj-ok bs ${busy ? "bs-run" : ""}`} disabled={busy || !text.trim()}><BusyLabel busy={busy}>Commenter</BusyLabel></button>
           </div>
         </form>}
         <div className="tc-feed">

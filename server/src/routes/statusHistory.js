@@ -13,11 +13,11 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db
       .from("task_status_history")
-      .select("status, entered_at")
+      .select("status, stage_id, entered_at")
       .eq("task_id", req.params.taskId)
       .order("entered_at", { ascending: true }),
   );
-  res.json(rows.map((r) => ({ status: r.status, enteredAt: r.entered_at })));
+  res.json(rows.map((r) => ({ status: r.status, stageId: r.stage_id ?? null, enteredAt: r.entered_at })));
 });
 
 export default router;

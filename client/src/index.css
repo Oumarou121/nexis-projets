@@ -1112,9 +1112,11 @@ h1, h2 { font-family: Sora, "DM Sans", system-ui, sans-serif; }
 .seg2 span { display: inline-flex; align-items: center; min-height: 36px; padding: 0 13px; border-radius: 99px; border: 1px solid var(--bd-s); color: var(--mut); font-size: 13.5px; font-weight: 500; }
 .seg2 input:checked + span { background: var(--tx); color: var(--bg); border-color: var(--tx); }
 .seg2 input:focus-visible + span { outline: 2px solid var(--pri); outline-offset: 2px; }
-.switch { position: relative; width: 46px; height: 26px; flex: none; }
-.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; padding: 0; width: 100%; height: 100%; cursor: pointer; }
-.switch i { position: absolute; inset: 0; border-radius: 99px; background: var(--bd-s); transition: background .15s; }
+.switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: none; }
+.switch input { position: absolute; inset: 0; z-index: 1; opacity: 0; margin: 0; padding: 0; width: 100%; height: 100%; cursor: pointer; }
+.switch i { position: absolute; inset: 0; border-radius: 99px; background: var(--bd-s); transition: background .15s; pointer-events: none; }
+.switch input:disabled { cursor: default; }
+.switch input:disabled + i { opacity: .55; }
 .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
 .switch input:checked + i { background: var(--pri); }
 .switch input:checked + i::after { transform: translateX(20px); }

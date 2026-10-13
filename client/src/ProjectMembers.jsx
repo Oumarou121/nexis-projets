@@ -4,6 +4,7 @@ import { usePerms } from "./perms.js";
 import { Avatar, Icon } from "./ui.jsx";
 import { memberName } from "./labels.js";
 import "./members.css";
+import { confirmDialog } from "./confirm.jsx";
 
 const when = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "");
 
@@ -14,12 +15,13 @@ const when = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "n
  * conservés côté serveur et réapparaissent si le projet repasse en privé).
  * `people` = membres de l'organisation (noms) ; `canList` = droit de les lister dans NEXIS Identity.
  */
-export default function ProjectMembers({ orgId, project, people, canList, onChange, onLeave }) {
+export default function ProjectMembers({ orgId, project, people, canList, onChange, onLeave, onBusy }) {
   const { canEdit } = usePerms();
   const url = `/api/organizations/${orgId}/projects/${project.id}/members`;
   const [data, setData] = useState(null); // { visibility, me, members, assigneesWithoutAccess }
   const [pick, setPick] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]); // verrouille la fermeture du modal parent
   const [err, setErr] = useState("");
   const isPrivate = project.visibility === "private";
 
@@ -57,21 +59,19 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
 
   async function remove(userId) {
     const self = userId === data.me;
-    const ask = self && isPrivate
-      ? "Vous retirer de ce projet privé ? Vous ne pourrez plus l'ouvrir tant qu'on ne vous aura pas ajouté de nouveau."
-      : `Retirer ${self ? "vous" : label(userId)} des membres du projet ?`;
-    if (!window.confirm(ask)) return;
-    setBusy(true);
-    try {
-      await api(`${url}/${userId}`, "DELETE");
-      setErr("");
-      if (self && isPrivate) return onLeave?.();
-      await load();
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+    const cfg =
+      self && isPrivate
+        ? { tone: "danger", icon: "lock", title: "Vous retirer de ce projet privé ?", text: "Vous ne pourrez plus l’ouvrir tant qu’on ne vous aura pas ajouté de nouveau.", ok: "Me retirer" }
+        : { tone: "warn", icon: "user", title: self ? "Vous retirer du projet ?" : "Retirer ce membre ?", text: self ? "Vous ne serez plus membre du projet." : "Il ne sera plus membre du projet.", ...(self ? {} : { chip: [label(userId), "Membre"] }), ok: self ? "Me retirer" : "Retirer" };
+    await confirmDialog({
+      ...cfg,
+      run: async () => {
+        await api(`${url}/${userId}`, "DELETE");
+        setErr("");
+        if (self && isPrivate) return onLeave?.();
+        await load();
+      },
+    });
   }
 
   const rows = data?.members ?? [];

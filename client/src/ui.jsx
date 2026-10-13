@@ -1,6 +1,8 @@
+import "./stages.css";
+import "./confirm.css";
 import { useEffect, useRef, useState } from "react";
 import { usePerms } from "./perms.js";
-import { PRIORITY, PRIORITY_COLOR, STATUS_COLOR, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
+import { PRIORITY, PRIORITY_COLOR, STATUS_COLOR, stageColor, TASK_STATUS, isLate, memberName, shortDate } from "./labels.js";
 
 /* ---------- Icônes (SVG, héritent de currentColor) ---------- */
 const PATHS = {
@@ -37,6 +39,8 @@ const PATHS = {
   users: "M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2.5 20a6.5 6.5 0 0113 0M16 4.3a3.5 3.5 0 010 6.4M18 14a6.5 6.5 0 013.5 6",
   globe: "M12 21a9 9 0 100-18 9 9 0 000 18zM3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z",
   bell: "M6 17V11a6 6 0 1112 0v6l2 2H4zM10 21a2 2 0 004 0",
+  alert: "M12 3.5L2.5 20h19L12 3.5zM12 10v4.5M12 17.5h.01",
+  refresh: "M20 5v5h-5M4 19v-5h5M5.6 9A7 7 0 0118.4 7.6L20 10M18.4 15A7 7 0 015.6 16.4L4 14",
   lock: "M7 11V8a5 5 0 0110 0v3M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z",
 };
 
@@ -107,23 +111,32 @@ export function Menu({ trigger, items, label, align = "right", className = "" })
 }
 
 /* ---------- Statut : pastille cliquable avec menu (remplace le <select>) ---------- */
-export function StatusPill({ status, onChange, compact = false }) {
+export function StatusPill({ status, stageId, stages, label, color, onChange, compact = false }) {
   const { open, setOpen, ref } = usePopover();
   const { canEdit } = usePerms();
+  // Étapes du projet quand on les connaît ; sinon les 3 catégories (ex. « Mes tâches », multi-projets :
+  // `label` affiche alors le nom de l'étape actuelle, et choisir une catégorie vise sa première étape).
+  const byStage = !!stages?.length;
+  const options = byStage
+    ? stages.map((s) => ({ value: s.id, label: s.name, color: stageColor(s) }))
+    : Object.entries(TASK_STATUS).map(([v, l]) => ({ value: v, label: l, color: STATUS_COLOR[v] }));
+  const current = byStage ? stageId : status;
+  const cur = options.find((o) => o.value === current) ?? { label: label ?? TASK_STATUS[status] ?? status, color: color ?? STATUS_COLOR[status] };
+  const text = !byStage && label ? label : cur.label;
   return (
     <span className="pop" ref={ref}>
-      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${TASK_STATUS[status]}`} aria-haspopup="menu" aria-expanded={open} disabled={!canEdit} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
-        <i style={{ background: STATUS_COLOR[status] }} />
-        {!compact && TASK_STATUS[status]}
+      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${text}`} aria-haspopup="menu" aria-expanded={open} disabled={!canEdit} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
+        <i style={{ background: cur.color }} />
+        {!compact && text}
         {!compact && canEdit && <Icon name="chevron" size={12} />}
       </button>
       {open && canEdit && (
         <div className="menu left" role="menu">
-          {Object.entries(TASK_STATUS).map(([v, l]) => (
-            <button key={v} role="menuitemradio" aria-checked={v === status} type="button" className={`mi ${v === status ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); setOpen(false); if (v !== status) onChange(v); }}>
-              <i className="dot" style={{ background: STATUS_COLOR[v] }} />
-              {l}
-              {v === status && <Icon name="check" size={14} className="push" />}
+          {options.map((o) => (
+            <button key={o.value} role="menuitemradio" aria-checked={o.value === current} type="button" className={`mi ${o.value === current ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); setOpen(false); if (o.value !== current) onChange(o.value); }}>
+              <i className="dot" style={{ background: o.color }} />
+              {o.label}
+              {o.value === current && <Icon name="check" size={14} className="push" />}
             </button>
           ))}
         </div>
@@ -213,4 +226,43 @@ export function ColorPicker({ value, onChange, disabled = false, name = "pj-colo
       ))}
     </div>
   );
+}
+
+
+/* ---------- Erreur : carte stylée + bouton « Réessayer » (recharge la page) ---------- */
+/** « Connexion impossible. Aucun jeton… » → titre + détail ; sinon titre générique + message. */
+function splitError(message = "") {
+  const m = /^(Connexion impossible)\.?\s*(.*)$/s.exec(message);
+  if (m) return { title: m[1], text: m[2] || "La connexion à NEXIS n’a pas pu être établie." };
+  return { title: "Un problème est survenu", text: message };
+}
+
+/** `compact` : bandeau au-dessus d'un contenu déjà affiché ; sinon grande carte centrée (page vide). */
+export function ErrorState({ message, compact = false, onRetry, className = "", style }) {
+  const { title, text } = splitError(message);
+  const retry = onRetry ?? (() => window.location.reload());
+  return (
+    <div className={`es ${compact ? "es-compact" : ""} ${className}`} role="alert" style={style}>
+      <span className="es-ic"><Icon name="alert" size={compact ? 18 : 26} /></span>
+      <div className="es-body">
+        <h2 className="es-title">{title}</h2>
+        {text && <p className="es-text">{text}</p>}
+      </div>
+      <button type="button" className="es-retry" onClick={retry}><Icon name="refresh" size={15} />Réessayer</button>
+    </div>
+  );
+}
+
+
+/* ---------- Bouton d'action serveur : barre circulaire à la place du texte ---------- */
+export function Spin({ size = 20 }) {
+  return (
+    <svg className="cf-spin" style={{ width: size, height: size }} viewBox="0 0 24 24" role="progressbar" aria-label="Action en cours">
+      <circle className="cf-track" cx="12" cy="12" r="9" /><circle className="cf-arc" cx="12" cy="12" r="9" />
+    </svg>
+  );
+}
+/** Contenu d'un bouton : le texte reste (invisible) pour garder la largeur, la barre circulaire s'affiche par-dessus. */
+export function BusyLabel({ busy, children }) {
+  return <><span className={busy ? "bs-lbl bs-hid" : "bs-lbl"}>{children}</span>{busy && <Spin />}</>;
 }

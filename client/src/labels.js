@@ -1,5 +1,9 @@
 export const PROJECT_STATUS = { planned: "Planifié", active: "Actif", on_hold: "En pause", done: "Terminé" };
-export const TASK_STATUS = { todo: "À faire", in_progress: "En cours", review: "En revue", done: "Terminée" };
+// CATÉGORIES d'étape (les étapes elles-mêmes sont propres à chaque projet : task.stage / task.stageId).
+// task.status = catégorie de l'étape ; c'est elle qui sert aux retards, rapports et à l'avancement.
+export const TASK_STATUS = { todo: "À faire", in_progress: "En cours", done: "Terminée" };
+/** Nom d'affichage du statut d'une tâche : son étape, à défaut sa catégorie. */
+export const stageLabel = (t) => t.stage ?? TASK_STATUS[t.status] ?? t.status;
 export const PRIORITY = { low: "Basse", medium: "Moyenne", high: "Haute", urgent: "Urgente" };
 
 export const memberName = (m) =>
@@ -24,7 +28,12 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const fileSize = (n) => (n < 1024 ? `${n} o` : n < 1024 * 1024 ? `${Math.round(n / 1024)} Ko` : `${(n / 1024 / 1024).toFixed(1)} Mo`);
 
 /** Couleur de statut (point, pastille, barre de progression). */
-export const STATUS_COLOR = { todo: "var(--st-todo)", in_progress: "var(--st-progress)", review: "var(--st-review)", done: "var(--st-done)" };
+export const STATUS_COLOR = { todo: "var(--st-todo)", in_progress: "var(--st-progress)", done: "var(--st-done)" };
+/** Couleur d'une étape : sa couleur choisie (0 à 7), sinon celle de sa catégorie. */
+export const STAGE_COLORS = 8;
+export const stageColor = (s) => (Number.isInteger(s?.color) ? `var(--sc-${s.color})` : STATUS_COLOR[s?.category] ?? STATUS_COLOR.todo);
+/** Couleur du statut d'une tâche (étape si on la connaît, catégorie sinon). */
+export const taskColor = (t) => (Number.isInteger(t?.stageColor) ? `var(--sc-${t.stageColor})` : STATUS_COLOR[t?.status]);
 export const PRIORITY_COLOR = { low: "var(--mut)", medium: "var(--st-progress)", high: "var(--warn)", urgent: "var(--bad)" };
 
 /** « 12 oct. » ou « Demain » : date courte et lisible. */
@@ -49,7 +58,7 @@ export function fmtDuration(ms) {
 }
 
 /**
- * Temps passé dans chaque statut, à partir de l'historique (entrées triées par date).
+ * Temps passé dans chaque étape, à partir de l'historique (entrées triées par date).
  * Renvoie { status: { ms, since } } : `ms` cumule les passages, `since` = dernière entrée.
  * L'étape en cours court jusqu'à `now`.
  */
@@ -58,8 +67,9 @@ export function stageDurations(history, now = Date.now()) {
   (history ?? []).forEach((h, i) => {
     const start = new Date(h.enteredAt).getTime();
     const end = i + 1 < history.length ? new Date(history[i + 1].enteredAt).getTime() : now;
-    const cur = out[h.status] ?? { ms: 0, since: h.enteredAt };
-    out[h.status] = { ms: cur.ms + Math.max(0, end - start), since: h.enteredAt };
+    const key = h.stageId ?? h.status; // par étape ; anciennes lignes sans étape : par catégorie
+    const cur = out[key] ?? { ms: 0, since: h.enteredAt };
+    out[key] = { ms: cur.ms + Math.max(0, end - start), since: h.enteredAt };
   });
   return out;
 }

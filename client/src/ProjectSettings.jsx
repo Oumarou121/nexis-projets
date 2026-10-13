@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api } from "./api.js";
-import { ColorPicker, Icon } from "./ui.jsx";
+import { ColorPicker, Icon, Spin } from "./ui.jsx";
 import { projectColor } from "./labels.js";
 import ProjectMembers from "./ProjectMembers.jsx";
 import ProjectSharing from "./ProjectSharing.jsx";
+import ProjectStages from "./ProjectStages.jsx";
 import "./members.css";
+import { confirmDialog } from "./confirm.jsx";
 
 const DEFAULT_SETTINGS = {
   dependencies: false,
@@ -33,20 +35,23 @@ const OPTIONS = {
 };
 
 /** Paramètres du projet (fenêtre) : visibilité et fonctions activables. Enregistrés dès qu'on les change. */
-export default function ProjectSettings({ orgId, project, onChange, onClose, people = [], canList = false, onMembersChange, onLeave }) {
+export default function ProjectSettings({ orgId, project, onChange, onClose, people = [], canList = false, onMembersChange, onLeave, stages = [], onStagesChange, onBusy }) {
   const [settings, setSettings] = useState({ ...DEFAULT_SETTINGS, ...(project.settings ?? {}) });
   const [tab, setTab] = useState("settings");
   const [saving, setSaving] = useState(false);
+  const [tabBusy, setTabBusy] = useState(false); // action en cours dans un onglet (étapes, membres, partage)
+  const anyBusy = saving || tabBusy;
+  useEffect(() => { onBusy?.(anyBusy); return () => onBusy?.(false); }, [anyBusy, onBusy]);
   const { canEdit } = usePerms();
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     if (!onClose) return;
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => e.key === "Escape" && !anyBusy && onClose(); // pas de fermeture pendant une action
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, anyBusy]);
 
   async function saveColor(color) {
     setSaving(true);
@@ -64,17 +69,35 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
 
   async function saveVisibility(value) {
     if (value === visibility) return;
-    if (value === "private" && !window.confirm("Passer ce projet en privé ? Seuls ses membres (vous en faites partie), les responsables et les administrateurs pourront encore le voir. Les autres personnes le perdront de vue immédiatement.")) return;
-    if (value === "public" && !window.confirm("Passer ce projet en public ? Vous pourrez inviter des personnes extérieures à l'organisation par e-mail. Elles verront, en lecture seule, le nom du projet, sa description et ses tâches (titres, statuts, échéances) — jamais les commentaires, pièces jointes, temps passé ni les personnes assignées.")) return;
-    if (visibility === "public" && !window.confirm("Quitter le niveau « public » ? Toutes les invitations en cours seront révoquées : les invités perdront l'accès immédiatement.")) return;
+    const leavingPublic = visibility === "public" && value !== "public";
+    const cfg =
+      value === "private"
+        ? { tone: "warn", icon: "lock", title: "Passer ce projet en privé ?", text: "Seuls ses membres (vous en faites partie), les responsables et les administrateurs pourront encore le voir. Les autres personnes le perdront de vue immédiatement.", ...(leavingPublic ? { note: "Les invitations en cours seront aussi révoquées : les invités perdront l’accès immédiatement." } : {}), ok: "Passer en privé" }
+        : value === "public"
+        ? { tone: "warn", icon: "globe", title: "Passer ce projet en public ?", text: "Vous pourrez inviter des personnes extérieures à l’organisation par e-mail. Elles verront, en lecture seule :", list: ["le nom et la description du projet", "ses tâches (titres, statuts, échéances)"], note: "Jamais les commentaires, pièces jointes, temps passé ni personnes assignées.", ok: "Passer en public" }
+        : leavingPublic
+        ? { tone: "warn", icon: "globe", title: "Quitter le niveau « public » ?", text: "Toutes les invitations en cours seront révoquées : les invités perdront l’accès immédiatement.", ok: "Quitter le public" }
+        : null;
+    const apply = async () => {
+        const { assigneesWithoutAccess, ...updated } = await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { visibility: value });
+        onChange?.(updated);
+        setErr("");
+        // Passage en privé : des personnes avec une tâche en cours n'y ont plus accès.
+        const n = assigneesWithoutAccess?.length ?? 0;
+        setNotice(n > 0 ? `${n} ${n > 1 ? "personnes ont" : "personne a"} une tâche en cours dans ce projet sans en être ${n > 1 ? "membres" : "membre"} : ${n > 1 ? "elles ne la voient" : "elle ne la voit"} plus. Ajoutez-${n > 1 ? "les" : "la"} dans l'onglet « Membres » ou réassignez ${n > 1 ? "leurs tâches" : "sa tâche"}.` : "");
+    };
+    if (cfg) {
+      setSaving(true);
+      try {
+        await confirmDialog({ ...cfg, run: apply });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     setSaving(true);
     try {
-      const { assigneesWithoutAccess, ...updated } = await api(`/api/organizations/${orgId}/projects/${project.id}`, "PATCH", { visibility: value });
-      onChange?.(updated);
-      setErr("");
-      // Passage en privé : des personnes avec une tâche en cours n'y ont plus accès.
-      const n = assigneesWithoutAccess?.length ?? 0;
-      setNotice(n > 0 ? `${n} ${n > 1 ? "personnes ont" : "personne a"} une tâche en cours dans ce projet sans en être ${n > 1 ? "membres" : "membre"} : ${n > 1 ? "elles ne la voient" : "elle ne la voit"} plus. Ajoutez-${n > 1 ? "les" : "la"} dans l'onglet « Membres » ou réassignez ${n > 1 ? "leurs tâches" : "sa tâche"}.` : "");
+      await apply();
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -102,22 +125,25 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
       <header>
         <span className="set-title">
           <i className="set-dot" style={{ background: `var(--pj-${colorIdx})` }} aria-hidden="true" />
-          <span><small>Paramètres du projet</small><strong>{project.name}{visibility === "private" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="lock" size={14} />Privé</span>}{visibility === "public" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="globe" size={14} />Public</span>}</strong></span>
+          <span><small>Paramètres du projet</small><strong>{project.name}{visibility === "private" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="lock" size={14} />Privé</span>}{visibility === "public" && <span className="pm-lock" style={{ marginLeft: 8 }}><Icon name="globe" size={14} />Public</span>}{anyBusy && <span className="set-busy" role="status"><Spin size={14} />Enregistrement…</span>}</strong></span>
         </span>
-        {onClose && <button type="button" className="icon-btn" aria-label="Fermer" onClick={onClose}><Icon name="close" size={18} /></button>}
+        {onClose && <button type="button" className="icon-btn" aria-label="Fermer" disabled={anyBusy} onClick={onClose}><Icon name="close" size={18} /></button>}
       </header>
       <div className="set-body">
         <div className="set-tabs" role="tablist">
-          <button role="tab" aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>Paramètres</button>
-          <button role="tab" aria-selected={tab === "members"} className={tab === "members" ? "on" : ""} onClick={() => setTab("members")}>Membres</button>
-          {visibility === "public" && <button role="tab" aria-selected={tab === "sharing"} className={tab === "sharing" ? "on" : ""} onClick={() => setTab("sharing")}>Partage</button>}
+          <button role="tab" disabled={anyBusy} aria-selected={tab === "settings"} className={tab === "settings" ? "on" : ""} onClick={() => setTab("settings")}>Paramètres</button>
+          <button role="tab" disabled={anyBusy} aria-selected={tab === "stages"} className={tab === "stages" ? "on" : ""} onClick={() => setTab("stages")}>Étapes</button>
+          <button role="tab" disabled={anyBusy} aria-selected={tab === "members"} className={tab === "members" ? "on" : ""} onClick={() => setTab("members")}>Membres</button>
+          {visibility === "public" && <button role="tab" disabled={anyBusy} aria-selected={tab === "sharing"} className={tab === "sharing" ? "on" : ""} onClick={() => setTab("sharing")}>Partage</button>}
           <button role="tab" aria-selected={tab === "description"} className={tab === "description" ? "on" : ""} onClick={() => setTab("description")}>Description</button>
         </div>
 
-        {tab === "members" ? (
-          <ProjectMembers orgId={orgId} project={project} people={people} canList={canList} onChange={onMembersChange} onLeave={onLeave} />
+        {tab === "stages" ? (
+          <ProjectStages onBusy={setTabBusy} orgId={orgId} project={project} stages={stages} onChange={onStagesChange} />
+        ) : tab === "members" ? (
+          <ProjectMembers onBusy={setTabBusy} orgId={orgId} project={project} people={people} canList={canList} onChange={onMembersChange} onLeave={onLeave} />
         ) : tab === "sharing" && visibility === "public" ? (
-          <ProjectSharing orgId={orgId} project={project} />
+          <ProjectSharing onBusy={setTabBusy} orgId={orgId} project={project} />
         ) : tab === "description" ? (
           project.description
             ? <p className="panel-desc set-box">{project.description}</p>

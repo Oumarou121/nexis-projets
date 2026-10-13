@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 const TABLES = [
   "projects", "tasks", "project_members", "activity_log", "task_comments", "task_attachments",
-  "task_activities", "task_timesheets", "task_dependencies", "task_status_history", "notifications", "notification_prefs", "project_guests", "digest_log", "push_tokens",
+  "task_activities", "task_timesheets", "task_dependencies", "task_status_history", "project_stages", "organization_stage_templates", "notifications", "notification_prefs", "project_guests", "digest_log", "push_tokens",
 ];
 
 // Valeurs par défaut posées à l'insertion (comme les « default » SQL).
@@ -18,6 +18,7 @@ const PRIMARY_KEYS = { project_members: ["project_id", "user_id"], notification_
 // Clés étrangères (enfant → parent) : sert aux embeds et aux suppressions en cascade.
 const FK = {
   tasks: { projects: "project_id" },
+  project_stages: { projects: "project_id" },
   project_members: { projects: "project_id" },
   task_comments: { tasks: "task_id" },
   task_attachments: { tasks: "task_id" },

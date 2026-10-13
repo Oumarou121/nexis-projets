@@ -13,8 +13,9 @@ import TaskSearch, { applySearch, groupTasks } from "./TaskSearch.jsx";
 import { CalendarSkeleton, KanbanSkeleton, ListSkeleton, PlanSkeleton, ReportsSkeleton, Skel } from "./Skeleton.jsx";
 import TaskSidebar from "./TaskSidebar.jsx";
 import { featureOn, usePerms } from "./perms.js";
-import { Avatar, DateField, Icon, PriorityStar, StatusPill } from "./ui.jsx";
+import { Avatar, BusyLabel, DateField, ErrorState, Icon, PriorityStar, StatusPill } from "./ui.jsx";
 import { PRIORITY, TASK_STATUS, isLate, memberName, projectColor, shortDate } from "./labels.js";
+import { confirmDialog } from "./confirm.jsx";
 
 const VIEW_KEY = "nexis.tasks.view";
 const readView = () => {
@@ -47,12 +48,15 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   const [labelFilter, setLabelFilter] = useState("");
   const [search, setSearch] = useState({ q: "", filters: [], groupBy: "" });
   const [creating, setCreating] = useState(false);
+  const [createBusy, setCreateBusy] = useState(false); // création en cours : le modal ne peut plus être fermé
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [msBusy, setMsBusy] = useState(false);
   useEffect(() => {
     if (!creating) return;
-    const onKey = (e) => e.key === "Escape" && setCreating(false);
+    const onKey = (e) => e.key === "Escape" && !createBusy && setCreating(false);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [creating]);
+  }, [creating, createBusy]);
   const [showSettings, setShowSettings] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
   const [sidebarTask, setSidebarTask] = useState(null);
@@ -81,6 +85,17 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   const memberSet = useMemo(() => (memberIds ? new Set(memberIds) : null), [memberIds]);
   const assignable = (currentId) => (isPrivate && memberSet ? members.filter((m) => memberSet.has(m.userId) || m.userId === currentId) : members);
 
+  // Étapes (statuts) du projet : colonnes du Kanban, menus de statut, barre de la fiche tâche.
+  const [stages, setStages] = useState([]);
+  const stagesBase = `/api/organizations/${orgId}/projects/${project.id}/stages`;
+  const loadStages = useCallback(() => api(stagesBase).then((d) => setStages(d.stages)).catch(() => {}), [stagesBase]);
+  useEffect(() => { loadStages(); }, [loadStages]);
+  // Une étape (id) ou une catégorie (todo / in_progress / done) → étape visée et corps de requête.
+  const stageTarget = (target) => {
+    const byId = stages.find((s) => s.id === target);
+    return { stage: byId ?? stages.find((s) => s.category === target), body: byId ? { stageId: target } : { status: target } };
+  };
+
   const load = useCallback(() => api(base).then(setList).catch((e) => setErr(e.message)).finally(() => setLoaded(true)), [base]);
   useEffect(() => { load(); }, [load]);
 
@@ -97,6 +112,8 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
 
   async function onCreate(e) {
     e.preventDefault();
+    if (createBusy) return;
+    setCreateBusy(true);
     try {
       await api(base, "POST", {
         title: form.title,
@@ -112,6 +129,8 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       load();
     } catch (e2) {
       setErr(e2.message);
+    } finally {
+      setCreateBusy(false);
     }
   }
 
@@ -129,9 +148,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   }
 
   // Création rapide depuis une colonne Kanban : titre + statut de la colonne.
-  async function quickAdd(title, status) {
+  async function quickAdd(title, target) {
     try {
-      const created = await api(base, "POST", { title, status });
+      const created = await api(base, "POST", { title, ...stageTarget(target).body });
       setList((l) => [...l, { ...created, commentCount: 0, attachmentCount: 0 }]);
       setErr("");
       return true;
@@ -198,30 +217,31 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   }
 
   // Déplacement entre colonnes : affiché tout de suite, annulé si le serveur refuse.
-  async function move(task, status) {
-    if (task.status === status) return;
-    const previous = task.status;
-    setList((l) => l.map((t) => (t.id === task.id ? { ...t, status } : t)));
+  async function move(task, target) {
+    const { stage, body } = stageTarget(target);
+    if (stage ? task.stageId === stage.id : task.status === target) return;
+    const previous = { status: task.status, stageId: task.stageId, stage: task.stage, stageColor: task.stageColor };
+    const optimistic = stage ? { status: stage.category, stageId: stage.id, stage: stage.name, stageColor: stage.color ?? null } : { status: target };
+    setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...optimistic } : t)));
     try {
-      const updated = await api(`${base}/${task.id}`, "PATCH", { status });
+      const updated = await api(`${base}/${task.id}`, "PATCH", body);
       setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
       setErr("");
       return null;
     } catch (e) {
-      setList((l) => l.map((t) => (t.id === task.id ? { ...t, status: previous } : t)));
+      setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...previous } : t)));
       setErr(e.message);
       return e.message;
     }
   }
 
   async function remove(task) {
-    if (!window.confirm(`Supprimer la tâche « ${task.title} » ?`)) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "trash", title: "Supprimer cette tâche ?", text: "La tâche et ses sous-tâches, commentaires, pièces jointes et temps passé seront supprimés. Cette action est définitive.", chip: [task.title], ok: "Supprimer",
+      run: async () => {
       await api(`${base}/${task.id}`, "DELETE");
       setList((l) => l.filter((t) => t.id !== task.id && t.parentId !== task.id));
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   const assigneeSelect = (value, onChange, label) => (
@@ -273,7 +293,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         <DateField label="Échéance" value={t.dueDate} late={isLate(t)} placeholder="—" onChange={(dueDate) => change(t, { dueDate })} />
       </td>
       <td><Progress value={progressOf(t)} /></td>
-      <td><StatusPill status={t.status} onChange={(s) => move(t, s)} /></td>
+      <td><StatusPill stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => move(t, s)} /></td>
       <td className="acts">
         <button className="icon-btn" onClick={() => setSidebarTask(t)} aria-label={`Aperçu rapide ${t.title}`} title="Aperçu rapide"><Icon name="expand" /></button>
         {canEdit && <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>}
@@ -301,6 +321,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         onCount={setCount}
         onFileCount={setFileCount}
         subtasks={subsOf.get(openTask.id) ?? []}
+        stages={stages}
         onChangeTask={change}
         onMoveTask={move}
         onAddSub={addSub}
@@ -355,12 +376,12 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
           </div>
         </div>
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <ErrorState compact message={err} />}
 
       {busy ? (
         view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />
       ) : view === "kanban" ? (
-        <Kanban tasks={shown} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Kanban tasks={shown} stages={stages} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
         <Gantt tasks={shown} dependencies={depsOn ? deps : []} members={members} onMove={move} onChange={canEdit ? change : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "calendar" ? (
@@ -403,16 +424,16 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         </div>
       )}
       {creating && (
-        <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && setCreating(false)}>
-          <form className="pj-md" onSubmit={onCreate} role="dialog" aria-modal="true" aria-labelledby="nt-t">
+        <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && !createBusy && setCreating(false)}>
+          <form className="pj-md" onSubmit={onCreate} role="dialog" aria-modal="true" aria-labelledby="nt-t" aria-busy={createBusy}>
             <div className="pj-mh">
               <div>
                 <h2 id="nt-t">Nouvelle tâche</h2>
                 <p>Seul le titre est obligatoire. Le reste se règle plus tard.</p>
               </div>
-              <button type="button" className="pj-x" aria-label="Fermer" onClick={() => setCreating(false)}><Icon name="close" size={18} /></button>
+              <button type="button" className="pj-x" aria-label="Fermer" disabled={createBusy} onClick={() => setCreating(false)}><Icon name="close" size={18} /></button>
             </div>
-            <div className="pj-mb">
+            <div className={`pj-mb ${createBusy ? "bs-inert" : ""}`} inert={createBusy ? "" : undefined}>
               <div className="pj-f">
                 <label htmlFor="nt-title">Titre de la tâche</label>
                 <input id="nt-title" type="text" autoFocus placeholder="Ex. : Préparer la maquette" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -455,35 +476,38 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
             </div>
             <div className="pj-mf">
               <small>Vous pourrez ajouter des sous-tâches et des fichiers depuis la fiche.</small>
-              <button type="button" className="pj-ghost" onClick={() => setCreating(false)}>Annuler</button>
-              <button className="pj-ok" disabled={!form.title.trim()}>Ajouter la tâche</button>
+              <button type="button" className="pj-ghost" disabled={createBusy} onClick={() => setCreating(false)}>Annuler</button>
+              <button className={`pj-ok bs ${createBusy ? "bs-run" : ""}`} disabled={!form.title.trim() || createBusy}><BusyLabel busy={createBusy}>Ajouter la tâche</BusyLabel></button>
             </div>
           </form>
         </div>
       )}
       {showSettings && (
-        <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && setShowSettings(false)}>
+        <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && !settingsBusy && setShowSettings(false)}>
           <ProjectSettings
             orgId={orgId}
             project={project}
             onChange={setProject}
             onClose={() => setShowSettings(false)}
+            onBusy={setSettingsBusy}
             people={members}
             canList={canAssign}
             onMembersChange={setMemberIds}
             onLeave={onBack}
+            stages={stages}
+            onStagesChange={() => { loadStages(); load(); }}
           />
         </div>
       )}
       {showMilestones && (
-        <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && setShowMilestones(false)}>
+        <div className="overlay center" onMouseDown={(e) => e.target === e.currentTarget && !msBusy && setShowMilestones(false)}>
           <div className="dlg wide" role="dialog" aria-label="Jalons du projet">
             <header>
               Jalons du projet
-              <button type="button" className="x" aria-label="Fermer" onClick={() => setShowMilestones(false)}><Icon name="close" /></button>
+              <button type="button" className="x" aria-label="Fermer" disabled={msBusy} onClick={() => setShowMilestones(false)}><Icon name="close" /></button>
             </header>
             <div className="set-body">
-              <Milestones orgId={orgId} projectId={project.id} tasks={top} onOpen={(id) => { setShowMilestones(false); setOpenId(id); }} onChange={(updated) => {
+              <Milestones orgId={orgId} projectId={project.id} tasks={top} onBusy={setMsBusy} onOpen={(id) => { setShowMilestones(false); setOpenId(id); }} onChange={(updated) => {
                 setList((l) => l.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
               }} />
             </div>

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { RowsSkeleton, Skel } from "./Skeleton.jsx";
-import { Avatar, Icon } from "./ui.jsx";
+import { Avatar, BusyLabel, Icon } from "./ui.jsx";
 import { memberName, todayISO } from "./labels.js";
+import { confirmDialog } from "./confirm.jsx";
 
 function minutesToHours(m) {
   const h = Math.floor(m / 60);
@@ -52,10 +53,12 @@ function Entry({ entry, who, member, onSave, onRemove }) {
 }
 
 /** Feuilles de temps d'une tâche : lignes modifiables et total des heures passées. */
-export default function Timesheets({ orgId, projectId, taskId, members }) {
+export default function Timesheets({ orgId, projectId, taskId, members, onBusy }) {
   const [timesheets, setTimesheets] = useState(null);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { onBusy?.(saving); return () => onBusy?.(false); }, [saving, onBusy]); // verrouille la fiche tâche pendant l'envoi
   const blank = () => ({ date: todayISO(), description: "", duration: "01:00" });
   const [newEntry, setNewEntry] = useState(blank);
   const base = `/api/organizations/${orgId}/projects/${projectId}/tasks/${taskId}/timesheets`;
@@ -71,6 +74,8 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
     e.preventDefault();
     const duration = hoursToMinutes(newEntry.duration);
     if (!duration || duration <= 0) return setErr("Durée invalide (format HH:MM).");
+    if (saving) return;
+    setSaving(true);
     try {
       const created = await api(base, "POST", { date: newEntry.date, description: newEntry.description, duration });
       setTimesheets((t) => [created, ...(t ?? [])]);
@@ -79,6 +84,8 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
       setErr("");
     } catch (e2) {
       setErr(e2.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -93,14 +100,13 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
   }
 
   async function removeEntry(entry) {
-    if (!window.confirm("Supprimer cette feuille de temps ?")) return;
-    try {
+    await confirmDialog({ tone: "danger", icon: "trash", title: "Supprimer cette feuille de temps ?", text: "Le temps saisi sera supprimé. Cette action est définitive.", ok: "Supprimer",
+      run: async () => {
       await api(`${base}/${entry.id}`, "DELETE");
       setTimesheets((t) => t.filter((x) => x.id !== entry.id));
       setErr("");
-    } catch (e) {
-      setErr(e.message);
-    }
+      },
+    });
   }
 
   const memberOf = (id) => members.find((x) => x.userId === id);
@@ -133,12 +139,12 @@ export default function Timesheets({ orgId, projectId, taskId, members }) {
         </div>
       )}
       {!canEdit ? null : adding ? (
-        <form onSubmit={addEntry} className="tsx-form">
+        <form onSubmit={addEntry} className={`tsx-form ${saving ? "bs-inert" : ""}`} aria-busy={saving} inert={saving ? "" : undefined}>
           <input type="date" aria-label="Date" value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} />
           <input placeholder="Description" aria-label="Description" value={newEntry.description} onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })} className="grow" />
           <input aria-label="Durée (HH:MM)" value={newEntry.duration} onChange={(e) => setNewEntry({ ...newEntry, duration: e.target.value })} className="dur-in" placeholder="HH:MM" />
-          <button type="submit">Ajouter</button>
-          <button type="button" className="ghost" onClick={() => { setAdding(false); setErr(""); }}>Annuler</button>
+          <button type="submit" className={`bs ${saving ? "bs-run" : ""}`} disabled={saving}><BusyLabel busy={saving}>Ajouter</BusyLabel></button>
+          <button type="button" className="ghost" disabled={saving} onClick={() => { setAdding(false); setErr(""); }}>Annuler</button>
         </form>
       ) : (
         <button type="button" className="add-dash" disabled={!timesheets} onClick={() => setAdding(true)}><Icon name="plus" size={15} /> Ajouter une ligne</button>
