@@ -25,8 +25,8 @@ function Row({ t, sub, today }) {
     <li className={`pt-task ${sub ? "sub" : ""}`}>
       <i className="pt-dot" style={{ background: taskColor(t) }} aria-hidden="true" />
       <span className="pt-title">{t.isMilestone && <span className="pt-ms" title="Jalon" aria-label="Jalon">◆ </span>}{t.title}</span>
-      {(t.priority === "high" || t.priority === "urgent") && t.status !== "done" && <span className="pt-chip warn">{PRIORITY[t.priority]}</span>}
-      {t.dueDate && <span className={`pt-due ${late ? "late" : ""}`}>{late ? "En retard · " : ""}{short(t.dueDate)}</span>}
+      {(t.priority === "high" || t.priority === "urgent") && t.status !== "done" && <span className={`pt-pr ${t.priority}`}>{PRIORITY[t.priority]}</span>}
+      {t.dueDate && <span className={`pt-due ${late ? "late" : ""}`}><b>{short(t.dueDate)}</b>{late && <span>En retard</span>}</span>}
     </li>
   );
 }
@@ -86,7 +86,7 @@ export default function Portal({ token }) {
   if (error) {
     return (
       <main className="pt pt-errwrap">
-        <div className="pt-card pt-center" role="alert">
+        <div className="pt-box pt-center" role="alert">
           <div className="pt-erric" aria-hidden="true">{error.icon}</div>
           <h1>{error.title}</h1>
           <p>{error.text}</p>
@@ -117,29 +117,30 @@ export default function Portal({ token }) {
     .filter((g) => g.items.length > 0);
   const isFolded = (g) => !active && (folded[g.id] ?? g.category === "done");
 
+  const stClass = ["active", "planned", "on_hold", "done"].includes(project.status) ? project.status : "planned";
+
   return (
     <>
       <header className="pt-bar">
-        <div>
-          <img className="pt-logo" src={logo} alt="" width="44" height="34" />
-          <span className="pt-brand">NEXIS Projets</span>
+        <span className="pt-brandw"><img className="pt-logo" src={logo} alt="" width="44" height="34" /><span className="pt-brand">NEXIS Projets</span></span>
+        <div className="pt-right">
           <span className="pt-ro">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>
             Lecture seule
           </span>
-          <span className="pt-me" style={{ background: labelColor(guest.email) }} title={guest.email}>{initials(guest.email)}</span>
+          <span className="pt-me" title={guest.email}>{initials(guest.email)}</span>
         </div>
       </header>
 
       <main className="pt">
-        <section className="pt-card pt-hero">
-          <div>
-            <span className="pt-chip">{PROJECT_STATUS[project.status] ?? project.status}</span>
+        <section className="pt-head">
+          <div className="pt-headtx">
+            <span className="pt-st" style={{ background: `var(--pst-${stClass}-bg)`, color: `var(--pst-${stClass}-fg)` }}>{PROJECT_STATUS[project.status] ?? project.status}</span>
             <h1>{project.name}</h1>
             {project.description && <p className="pt-desc">{project.description}</p>}
           </div>
           <div className="pt-ring" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Avancement du projet">
-            <svg width="112" height="112" viewBox="0 0 112 112" aria-hidden="true">
+            <svg width="120" height="120" viewBox="0 0 112 112" aria-hidden="true">
               <circle className="t" cx="56" cy="56" r="48" />
               <circle className="a" cx="56" cy="56" r="48" strokeDasharray={RING} strokeDashoffset={RING * (1 - pct / 100)} />
             </svg>
@@ -148,14 +149,14 @@ export default function Portal({ token }) {
         </section>
 
         <div className="pt-kpis">
-          <div className="pt-card pt-kpi done"><b>{stats.done}</b><small>Terminée{stats.done > 1 ? "s" : ""}</small></div>
-          <div className="pt-card pt-kpi"><b>{inProgress}</b><small>En cours</small></div>
-          <div className={`pt-card pt-kpi ${stats.late > 0 ? "late" : ""}`}><b>{stats.late}</b><small>En retard</small></div>
-          <div className="pt-card pt-kpi"><b>{project.dueDate ? short(project.dueDate) : "—"}</b><small>Échéance du projet</small></div>
+          <div className="pt-kpi"><strong>{stats.done}</strong><span>Terminée{stats.done > 1 ? "s" : ""}</span></div>
+          <div className="pt-kpi"><strong>{inProgress}</strong><span>En cours</span></div>
+          <div className={`pt-kpi ${stats.late > 0 ? "bad" : ""}`}><strong>{stats.late}</strong><span>En retard</span></div>
+          <div className="pt-kpi"><strong>{project.dueDate ? short(project.dueDate) : "—"}</strong><span>Échéance du projet</span></div>
         </div>
 
         {milestones.length > 0 && (
-          <section className="pt-card pt-msc">
+          <section className="pt-box pt-msc">
             <h2>Jalons</h2>
             <ol className="pt-line">
               {milestones.map((t) => (
@@ -170,24 +171,29 @@ export default function Portal({ token }) {
         )}
 
         {data.tasks.length > 0 && (
-          <div className="pt-filters">
-            <input className="pt-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une tâche…" aria-label="Rechercher une tâche" />
-            {FILTERS.map(([k, label]) => (
-              <button key={k} type="button" className={`pt-f ${filter === k ? "on" : ""}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>{label}</button>
-            ))}
+          <div className="pt-tools">
+            <div className="pt-seg" role="group" aria-label="Filtrer les tâches">
+              {FILTERS.map(([k, label]) => (
+                <button key={k} type="button" className={filter === k ? "on" : ""} aria-pressed={filter === k} onClick={() => setFilter(k)}>{label}</button>
+              ))}
+            </div>
+            <label className="pt-search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une tâche…" aria-label="Rechercher une tâche" />
+            </label>
           </div>
         )}
 
         {visible.map((g) => {
           const closed = isFolded(g);
           return (
-            <section key={g.id} className={`pt-card pt-grp ${closed ? "c" : ""}`}>
+            <section key={g.id} className={`pt-box pt-grp ${closed ? "c" : ""}`}>
               <button type="button" className="pt-gh" aria-expanded={!closed} onClick={() => setFolded((f) => ({ ...f, [g.id]: !closed }))}>
                 <i className="pt-sw" style={{ background: g.color }} aria-hidden="true" />
                 <h2>{g.label}</h2>
                 <span className="pt-count">{g.items.length}</span>
                 <span className="pt-sp" />
-                <span className="pt-chev" aria-hidden="true">▾</span>
+                <svg className="pt-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
               </button>
               {!closed && (
                 <ul className="pt-list">
@@ -201,8 +207,8 @@ export default function Portal({ token }) {
             </section>
           );
         })}
-        {data.tasks.length === 0 && <section className="pt-card"><p className="muted">Aucune tâche pour le moment.</p></section>}
-        {data.tasks.length > 0 && visible.length === 0 && <section className="pt-card"><p className="muted">Aucune tâche ne correspond à votre recherche.</p></section>}
+        {data.tasks.length === 0 && <section className="pt-box pt-empty"><b>Aucune tâche pour le moment</b></section>}
+        {data.tasks.length > 0 && visible.length === 0 && <section className="pt-box pt-empty"><b>Aucune tâche ne correspond</b>Modifiez la recherche ou le filtre.</section>}
 
         <footer className="pt-foot">Invitation envoyée à {guest.email}. Ce lien est personnel : ne le transférez pas.</footer>
       </main>
