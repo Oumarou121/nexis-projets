@@ -15,9 +15,39 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=DM+Sans:wght@400;500;600&display=swap" />
+    <script>
+      /* Thème appliqué avant le premier affichage (même clé que src/theme.js) : pas de flash blanc en sombre. */
+      (function () {
+        try {
+          var t = localStorage.getItem("nexis.projets.theme");
+          document.documentElement.dataset.theme = t === "dark" || t === "auto" ? t : "light";
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <style>
+      /* Écran de démarrage : visible dès le premier octet, remplacé tel quel par React au rendu. */
+      html { background: #f3f6f7; --boot-tx: #53656f; }
+      html[data-theme="dark"] { background: #0b1a20; --boot-tx: #9db4bc; }
+      @media (prefers-color-scheme: dark) { html[data-theme="auto"] { background: #0b1a20; --boot-tx: #9db4bc; } }
+      body { margin: 0; }
+      .boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; margin: 0; font: 500 15px "DM Sans", system-ui, sans-serif; color: var(--boot-tx); }
+      .boot svg { animation: boot-spin .9s linear infinite; }
+      @keyframes boot-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .boot svg { animation-duration: 2.4s; } }
+    </style>
   </head>
   <body>
-    <div id="root"><p style="margin:0;min-height:100vh;display:grid;place-items:center;font:500 15px system-ui,sans-serif;color:#6b7186;background:#f4f5fb">Connexion à NEXIS…</p></div>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite">
+        <svg width="40" height="40" viewBox="0 0 50 50" aria-hidden="true">
+          <circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-opacity=".15" stroke-width="4" />
+          <circle cx="25" cy="25" r="20" fill="none" stroke="#DB0000" stroke-width="4" stroke-linecap="round" stroke-dasharray="31 126" />
+        </svg>
+        <p style="margin:0">Connexion à NEXIS…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

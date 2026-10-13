@@ -56,6 +56,9 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
   const { canEdit } = usePerms();
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
+  const [desc, setDesc] = useState(task.description ?? "");
+  useEffect(() => setDesc(task.description ?? ""), [task.id, task.description]);
+  const descDirty = desc.trim() !== (task.description ?? "").trim();
   const [labelText, setLabelText] = useState("");
   const [addingLabel, setAddingLabel] = useState(false);
   const [subTitle, setSubTitle] = useState("");
@@ -122,6 +125,13 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
     if (v === task.title) return;
     const msg = await onChangeTask(task, { title: v });
     if (msg) { setErr(msg); setTitle(task.title); }
+  }
+
+  // Description : enregistrée à la demande (bouton ou Ctrl/Cmd+Entrée) ; vide = suppression.
+  async function saveDescription() {
+    if (!descDirty) return;
+    const msg = await onChangeTask(task, { description: desc.trim() === "" ? null : desc });
+    setErr(msg ?? "");
   }
 
   async function saveLabels(labels) {
@@ -463,7 +473,32 @@ export default function TaskDetail({ orgId, projectId, projectName, task, member
           </div>
 
           <div className={`tab-content ${tab === "description" ? "on" : ""}`}>
-            {task.description ? <p className="panel-desc">{task.description}</p> : <p className="muted">Aucune description pour cette tâche.</p>}
+            {canEdit ? (
+              <div className="task-desc">
+                <textarea
+                  aria-label="Description de la tâche"
+                  rows={5}
+                  maxLength={4000}
+                  placeholder="Ajouter une description…"
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveDescription(); }
+                    else if (e.key === "Escape" && descDirty) { e.stopPropagation(); setDesc(task.description ?? ""); }
+                  }}
+                />
+                {descDirty && (
+                  <div className="task-desc-actions">
+                    <button type="button" className="pj-ok" onClick={saveDescription}>Enregistrer</button>
+                    <button type="button" className="pj-ghost" onClick={() => setDesc(task.description ?? "")}>Annuler</button>
+                  </div>
+                )}
+              </div>
+            ) : task.description ? (
+              <p className="panel-desc">{task.description}</p>
+            ) : (
+              <p className="muted">Aucune description pour cette tâche.</p>
+            )}
           </div>
 
           <div className={`tab-content ${tab === "subtasks" ? "on" : ""}`}>

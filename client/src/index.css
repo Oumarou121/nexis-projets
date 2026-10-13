@@ -1813,3 +1813,8 @@ input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
 .mention-list { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--bd); border-radius: 10px; background: var(--card); box-shadow: var(--sh-2); display: grid; gap: 2px; }
 .mention-list button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--tx); text-align: left; font-weight: 400; }
 .mention-list button:hover, .mention-list button.on { background: var(--hov); }
+
+/* Description d'une tâche : zone modifiable, boutons visibles seulement s'il y a une modification. */
+.task-desc textarea { min-height: 120px; line-height: 1.5; }
+.task-desc-actions { display: flex; gap: 10px; margin-top: 10px; }
+.task-desc-actions .pj-ok, .task-desc-actions .pj-ghost { min-height: 38px; font-size: 14px; padding: 0 18px; }
