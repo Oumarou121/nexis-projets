@@ -2,7 +2,7 @@ import { KpiSkeleton, MyTasksSkeleton, Skel } from "./Skeleton.jsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 import LabelChips from "./LabelChips.jsx";
-import { ErrorState, Icon, PriorityStar, StatusPill } from "./ui.jsx";
+import { ErrorState, Icon, PriorityStar, StatusPill, useInstant } from "./ui.jsx";
 import { PRIORITY, TASK_STATUS, taskColor, isLate, shortDate, todayISO } from "./labels.js";
 
 const DUE = { "": "Toutes les échéances", late: "En retard", week: "7 prochains jours", none: "Sans échéance" };
@@ -30,12 +30,14 @@ export default function MyTasks({ orgId, onOpenProject }) {
   const [f, setF] = useState({ q: "", status: "", priority: "", due: "", label: "" });
   const [closed, setClosed] = useState(() => new Set());
   const base = `/api/organizations/${orgId}/my-tasks`;
+  const inst = useInstant();
 
   useEffect(() => {
     api(base).then(setList).catch((e) => setErr(e.message));
   }, [base]);
 
-  async function setStatus(t, status) {
+  const setStatus = (t, status) => inst.run(t.id, () => setStatusNow(t, status));
+  async function setStatusNow(t, status) {
     try {
       const u = await api(`/api/organizations/${orgId}/projects/${t.projectId}/tasks/${t.id}`, "PATCH", { status });
       setList((l) => l.map((x) => (x.id === t.id ? { ...x, status: u.status, stageId: u.stageId, stage: u.stage, stageColor: u.stageColor } : x)));
@@ -157,7 +159,7 @@ export default function MyTasks({ orgId, onOpenProject }) {
                         </>
                       ) : <span className="muted">—</span>}
                     </td>
-                    <td><StatusPill status={t.status} label={t.stage} color={taskColor(t)} onChange={(s) => setStatus(t, s)} /></td>
+                    <td><StatusPill busy={inst.busy(t.id)} status={t.status} label={t.stage} color={taskColor(t)} onChange={(s) => setStatus(t, s)} /></td>
                   </tr>
                 ))}
               </Fragment>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { Icon, usePopover } from "./ui.jsx";
+import { BusyLabel, Icon, Spin, useInstant, usePopover } from "./ui.jsx";
 import { disablePush, enablePush, pushActive, pushBlocked, pushNeedsInstall, pushSupported, storedPushToken } from "./push.js";
 
 const REFRESH_MS = 60_000;
@@ -24,6 +24,7 @@ export default function NotificationBell({ orgId, onOpen }) {
   const [digestPref, setDigestPref] = useState(true);
   const [pushOn, setPushOn] = useState(pushActive);
   const [pushBusy, setPushBusy] = useState(false);
+  const inst = useInstant();
   const base = `/api/organizations/${orgId}/notifications`;
 
   const load = useCallback(async () => {
@@ -95,7 +96,8 @@ export default function NotificationBell({ orgId, onOpen }) {
     api(`${base}/preferences`).then((p) => { setEmailPref(p.email); setDigestPref(p.digest !== false); }).catch(() => {});
   }, [open, base]);
 
-  async function toggleDigest(value) {
+  const toggleDigest = (value) => inst.run("digest", () => toggleDigestNow(value));
+  async function toggleDigestNow(value) {
     const previous = digestPref;
     setDigestPref(value);
     try {
@@ -106,7 +108,8 @@ export default function NotificationBell({ orgId, onOpen }) {
     }
   }
 
-  async function toggleEmail(value) {
+  const toggleEmail = (value) => inst.run("email", () => toggleEmailNow(value));
+  async function toggleEmailNow(value) {
     const previous = emailPref;
     setEmailPref(value);
     try {
@@ -117,7 +120,8 @@ export default function NotificationBell({ orgId, onOpen }) {
     }
   }
 
-  async function readAll() {
+  const readAll = () => inst.run("readAll", readAllNow);
+  async function readAllNow() {
     try {
       await api(`${base}/read-all`, "POST");
       setData((d) => ({ unread: 0, items: d.items.map((i) => ({ ...i, read: true })) }));
@@ -152,7 +156,7 @@ export default function NotificationBell({ orgId, onOpen }) {
         <div className="menu right notif-panel" role="dialog" aria-label="Notifications">
           <div className="notif-head">
             <strong>Notifications</strong>
-            {data.unread > 0 && <button type="button" className="notif-all" onClick={readAll}>Tout marquer comme lu</button>}
+            {data.unread > 0 && <button type="button" className={`notif-all bs ${inst.busy("readAll") ? "bs-run" : ""}`} disabled={inst.busy("readAll")} onClick={readAll}><BusyLabel busy={inst.busy("readAll")}>Tout marquer comme lu</BusyLabel></button>}
           </div>
           {err && <p className="error notif-msg">{err}</p>}
           {!err && data.items.length === 0 && <p className="muted notif-msg">Aucune notification.</p>}
@@ -169,14 +173,14 @@ export default function NotificationBell({ orgId, onOpen }) {
           </ul>
           {emailPref !== null && (
             <label className="notif-pref">
-              <input type="checkbox" checked={emailPref} onChange={(e) => toggleEmail(e.target.checked)} />
-              Recevoir aussi mes notifications par e-mail
+              <input type="checkbox" checked={emailPref} disabled={inst.busy("email")} onChange={(e) => toggleEmail(e.target.checked)} />
+              Recevoir aussi mes notifications par e-mail{inst.busy("email") && <Spin size={14} className="ib" />}
             </label>
           )}
           {pushSupported() && (
             <label className="notif-pref">
               <input type="checkbox" checked={pushOn} disabled={pushBusy || (pushBlocked() && !pushOn)} onChange={(e) => togglePush(e.target.checked)} />
-              {pushBlocked() && !pushOn ? "Notifications bloquées dans le navigateur" : "Recevoir les notifications push sur cet appareil"}
+              {pushBlocked() && !pushOn ? "Notifications bloquées dans le navigateur" : "Recevoir les notifications push sur cet appareil"}{pushBusy && <Spin size={14} className="ib" />}
             </label>
           )}
           {pushNeedsInstall() && (
@@ -186,8 +190,8 @@ export default function NotificationBell({ orgId, onOpen }) {
           )}
           {emailPref !== null && (
             <label className="notif-pref">
-              <input type="checkbox" checked={emailPref && digestPref} disabled={!emailPref} onChange={(e) => toggleDigest(e.target.checked)} />
-              Recevoir un résumé quotidien de mes tâches
+              <input type="checkbox" checked={emailPref && digestPref} disabled={!emailPref || inst.busy("digest")} onChange={(e) => toggleDigest(e.target.checked)} />
+              Recevoir un résumé quotidien de mes tâches{inst.busy("digest") && <Spin size={14} className="ib" />}
             </label>
           )}
         </div>

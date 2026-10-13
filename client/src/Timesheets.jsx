@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { RowsSkeleton, Skel } from "./Skeleton.jsx";
-import { Avatar, BusyLabel, Icon } from "./ui.jsx";
+import { Avatar, BusyLabel, Icon, Spin, useInstant } from "./ui.jsx";
 import { memberName, todayISO } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 
@@ -19,7 +19,7 @@ function hoursToMinutes(h) {
 }
 
 /** Une ligne modifiable : les champs ne sont enregistrés qu'à la sortie du champ (pas à chaque frappe). */
-function Entry({ entry, who, member, onSave, onRemove }) {
+function Entry({ entry, who, member, onSave, onRemove, busy = false }) {
   const [date, setDate] = useState(entry.date);
   const [description, setDescription] = useState(entry.description ?? "");
   const [duration, setDuration] = useState(minutesToHours(entry.duration));
@@ -32,12 +32,12 @@ function Entry({ entry, who, member, onSave, onRemove }) {
 
   return (
     <li className="tsx-row">
-      <input type="date" aria-label="Date" disabled={!canEdit} className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
+      <input type="date" aria-label="Date" disabled={!canEdit || busy} className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
       <span className="ass tsx-who"><Avatar member={member} name={member ? undefined : who} size={24} /><span>{who}</span></span>
-      <input className="ti tsx-desc" readOnly={!canEdit} aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
+      <input className="ti tsx-desc" readOnly={!canEdit || busy} aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
       <input
         className="ti dur tsx-dur"
-        readOnly={!canEdit}
+        readOnly={!canEdit || busy}
         aria-label="Durée (HH:MM)"
         value={duration}
         onChange={(e) => setDuration(e.target.value)}
@@ -47,7 +47,7 @@ function Entry({ entry, who, member, onSave, onRemove }) {
           if (m !== entry.duration) onSave(entry, { duration: m });
         }}
       />
-      {canEdit && <button type="button" className="ib2" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={16} /></button>}
+      {busy ? <span className="tsx-spin"><Spin size={16} className="ib" /></span> : canEdit && <button type="button" className="ib2" onClick={() => onRemove(entry)} aria-label="Supprimer la ligne"><Icon name="trash" size={16} /></button>}
     </li>
   );
 }
@@ -58,7 +58,9 @@ export default function Timesheets({ orgId, projectId, taskId, members, onBusy }
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { onBusy?.(saving); return () => onBusy?.(false); }, [saving, onBusy]); // verrouille la fiche tâche pendant l'envoi
+  const inst = useInstant(); // modification d'une ligne existante
+  const lockedNow = saving || inst.any;
+  useEffect(() => { onBusy?.(lockedNow); return () => onBusy?.(false); }, [lockedNow, onBusy]); // verrouille la fiche tâche pendant l'envoi
   const blank = () => ({ date: todayISO(), description: "", duration: "01:00" });
   const [newEntry, setNewEntry] = useState(blank);
   const base = `/api/organizations/${orgId}/projects/${projectId}/tasks/${taskId}/timesheets`;
@@ -89,7 +91,8 @@ export default function Timesheets({ orgId, projectId, taskId, members, onBusy }
     }
   }
 
-  async function saveEntry(entry, changes) {
+  const saveEntry = (entry, changes) => inst.run(entry.id, () => saveEntryNow(entry, changes));
+  async function saveEntryNow(entry, changes) {
     try {
       const updated = await api(`${base}/${entry.id}`, "PATCH", changes);
       setTimesheets((t) => t.map((x) => (x.id === entry.id ? updated : x)));
@@ -130,7 +133,7 @@ export default function Timesheets({ orgId, projectId, taskId, members, onBusy }
             <>
               <div className="tsx-head" aria-hidden="true"><span>Date</span><span>Employé</span><span>Description</span><span>Durée</span><span /></div>
               <ul className="tsx-list">
-                {timesheets.map((t) => <Entry key={t.id} entry={t} who={nameOf(t.userId)} member={memberOf(t.userId)} onSave={saveEntry} onRemove={removeEntry} />)}
+                {timesheets.map((t) => <Entry key={t.id} entry={t} who={nameOf(t.userId)} member={memberOf(t.userId)} onSave={saveEntry} onRemove={removeEntry} busy={inst.busy(t.id)} />)}
               </ul>
             </>
           ) : !adding && (

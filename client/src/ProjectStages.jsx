@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import { usePerms } from "./perms.js";
-import { Icon } from "./ui.jsx";
+import { BusyLabel, Icon, Spin } from "./ui.jsx";
 import { STAGE_COLORS, stageColor } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 const COLOR_NAMES = ["Gris", "Bleu", "Violet", "Orange", "Vert", "Turquoise", "Rose", "Rouge-orangé"];
@@ -41,6 +41,7 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
   useEffect(() => setList(stages ?? []), [stages]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState(null); // étape en cours de modification (petite barre circulaire sur sa ligne)
   useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]); // verrouille la fermeture du modal parent
   const [name, setName] = useState("");
   const [category, setCategory] = useState("in_progress");
@@ -61,8 +62,9 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
     onChange?.();
   };
 
-  async function run(fn) {
+  async function run(fn, id = null) {
     setBusy(true);
+    setBusyId(id);
     try {
       const d = await fn();
       setList(d.stages);
@@ -74,20 +76,21 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
       return false;
     } finally {
       setBusy(false);
+      setBusyId(null);
     }
   }
 
   const add = async (e) => {
     e.preventDefault();
-    if (name.trim() && (await run(() => api(base, "POST", { name, category, color })))) { setName(""); setColor(null); }
+    if (name.trim() && (await run(() => api(base, "POST", { name, category, color }), "add"))) { setName(""); setColor(null); }
   };
-  const rename = (s, value) => value.trim() && value.trim() !== s.name && run(() => api(`${base}/${s.id}`, "PATCH", { name: value }));
-  const recolor = (s, value) => run(() => api(`${base}/${s.id}`, "PATCH", { color: value }));
-  const recategorize = (s, value) => run(() => api(`${base}/${s.id}`, "PATCH", { category: value }));
+  const rename = (s, value) => value.trim() && value.trim() !== s.name && run(() => api(`${base}/${s.id}`, "PATCH", { name: value }), s.id);
+  const recolor = (s, value) => run(() => api(`${base}/${s.id}`, "PATCH", { color: value }), s.id);
+  const recategorize = (s, value) => run(() => api(`${base}/${s.id}`, "PATCH", { category: value }), s.id);
   const shift = (i, step) => {
     const ids = list.map((s) => s.id);
     [ids[i], ids[i + step]] = [ids[i + step], ids[i]];
-    return run(() => api(`${base}/order`, "PUT", { ids }));
+    return run(() => api(`${base}/order`, "PUT", { ids }), list[i].id);
   };
   async function askDelete(s) {
     if (s.taskCount > 0) {
@@ -152,7 +155,7 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
             <select aria-label={`Catégorie de ${s.name}`} value={s.category} disabled={!canEdit || busy} onChange={(e) => recategorize(s, e.target.value)}>
               {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <span className="st-count" title="Tâches dans cette étape">{s.taskCount ?? 0} tâche{(s.taskCount ?? 0) > 1 ? "s" : ""}</span>
+            <span className="st-count" title="Tâches dans cette étape">{busyId === s.id && <Spin size={14} className="ib" />} {s.taskCount ?? 0} tâche{(s.taskCount ?? 0) > 1 ? "s" : ""}</span>
             {canEdit && (
               <span className="st-acts">
                 <button type="button" className="icon-btn" aria-label={`Monter ${s.name}`} disabled={busy || i === 0} onClick={() => shift(i, -1)}>↑</button>
@@ -171,7 +174,7 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
           <select aria-label="Catégorie de la nouvelle étape" value={category} onChange={(e) => setCategory(e.target.value)} disabled={busy || list.length >= MAX}>
             {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <button disabled={busy || !name.trim() || list.length >= MAX}>Ajouter</button>
+          <button className={`bs ${busyId === "add" ? "bs-run" : ""}`} disabled={busy || !name.trim() || list.length >= MAX}><BusyLabel busy={busyId === "add"}>Ajouter</BusyLabel></button>
         </form>
       )}
 

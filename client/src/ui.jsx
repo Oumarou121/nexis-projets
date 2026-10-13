@@ -111,7 +111,7 @@ export function Menu({ trigger, items, label, align = "right", className = "" })
 }
 
 /* ---------- Statut : pastille cliquable avec menu (remplace le <select>) ---------- */
-export function StatusPill({ status, stageId, stages, label, color, onChange, compact = false }) {
+export function StatusPill({ status, stageId, stages, label, color, onChange, compact = false, busy = false }) {
   const { open, setOpen, ref } = usePopover();
   const { canEdit } = usePerms();
   // Étapes du projet quand on les connaît ; sinon les 3 catégories (ex. « Mes tâches », multi-projets :
@@ -125,12 +125,12 @@ export function StatusPill({ status, stageId, stages, label, color, onChange, co
   const text = !byStage && label ? label : cur.label;
   return (
     <span className="pop" ref={ref}>
-      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${text}`} aria-haspopup="menu" aria-expanded={open} disabled={!canEdit} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
-        <i style={{ background: cur.color }} />
+      <button type="button" className={`spill ${compact ? "compact" : ""}`} aria-label={`Statut : ${text}`} aria-haspopup="menu" aria-expanded={open} aria-busy={busy || undefined} disabled={!canEdit || busy} onClick={(e) => { e.stopPropagation(); setOpen(!open); }}>
+        {busy ? <Spin size={compact ? 14 : 12} className="ib" /> : <i style={{ background: cur.color }} />}
         {!compact && text}
         {!compact && canEdit && <Icon name="chevron" size={12} />}
       </button>
-      {open && canEdit && (
+      {open && canEdit && !busy && (
         <div className="menu left" role="menu">
           {options.map((o) => (
             <button key={o.value} role="menuitemradio" aria-checked={o.value === current} type="button" className={`mi ${o.value === current ? "active" : ""}`} onClick={(e) => { e.stopPropagation(); setOpen(false); if (o.value !== current) onChange(o.value); }}>
@@ -146,7 +146,7 @@ export function StatusPill({ status, stageId, stages, label, color, onChange, co
 }
 
 /* ---------- Priorité : étoile à la Odoo (haute/urgente = remplie) ---------- */
-export function PriorityStar({ priority, onChange }) {
+export function PriorityStar({ priority, onChange, busy = false }) {
   const { canEdit } = usePerms();
   const hot = priority === "high" || priority === "urgent";
   return (
@@ -155,11 +155,12 @@ export function PriorityStar({ priority, onChange }) {
       className={`star ${hot ? "on" : ""}`}
       style={hot ? { color: PRIORITY_COLOR[priority] } : undefined}
       aria-label={`Priorité ${PRIORITY[priority]}`}
-      disabled={!canEdit}
+      disabled={!canEdit || busy}
+      aria-busy={busy || undefined}
       title={`Priorité ${PRIORITY[priority].toLowerCase()}${onChange && canEdit ? " — cliquer pour changer" : ""}`}
       onClick={(e) => { e.stopPropagation(); onChange?.(hot ? "medium" : "high"); }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill={hot ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z" /></svg>
+      {busy ? <Spin size={16} className="ib" /> : <svg width="16" height="16" viewBox="0 0 24 24" fill={hot ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z" /></svg>}
     </button>
   );
 }
@@ -181,13 +182,13 @@ export function StatusBar({ tasks }) {
 }
 
 /* ---------- Date : texte court lisible, sélecteur natif en surimpression invisible ---------- */
-export function DateField({ value, onChange, label, late = false, placeholder = "Définir" }) {
+export function DateField({ value, onChange, label, late = false, placeholder = "Définir", busy = false }) {
   const { canEdit } = usePerms();
   return (
-    <span className={`datef ${value ? "" : "empty"} ${late ? "late" : ""}`}>
-      <Icon name="calendar" size={14} />
+    <span className={`datef ${value ? "" : "empty"} ${late ? "late" : ""}`} aria-busy={busy || undefined}>
+      {busy ? <Spin size={14} className="ib" /> : <Icon name="calendar" size={14} />}
       <span>{value ? shortDate(value) : placeholder}</span>
-      <input type="date" aria-label={label} disabled={!canEdit} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} onClick={(e) => e.currentTarget.showPicker?.()} />
+      <input type="date" aria-label={label} disabled={!canEdit || busy} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} onClick={(e) => e.currentTarget.showPicker?.()} />
     </span>
   );
 }
@@ -255,9 +256,9 @@ export function ErrorState({ message, compact = false, onRetry, className = "", 
 
 
 /* ---------- Bouton d'action serveur : barre circulaire à la place du texte ---------- */
-export function Spin({ size = 20 }) {
+export function Spin({ size = 20, className = "" }) {
   return (
-    <svg className="cf-spin" style={{ width: size, height: size }} viewBox="0 0 24 24" role="progressbar" aria-label="Action en cours">
+    <svg className={`cf-spin ${className}`} style={{ width: size, height: size }} viewBox="0 0 24 24" role="progressbar" aria-label="Action en cours">
       <circle className="cf-track" cx="12" cy="12" r="9" /><circle className="cf-arc" cx="12" cy="12" r="9" />
     </svg>
   );
@@ -265,4 +266,31 @@ export function Spin({ size = 20 }) {
 /** Contenu d'un bouton : le texte reste (invisible) pour garder la largeur, la barre circulaire s'affiche par-dessus. */
 export function BusyLabel({ busy, children }) {
   return <><span className={busy ? "bs-lbl bs-hid" : "bs-lbl"}>{children}</span>{busy && <Spin />}</>;
+}
+
+/** Modifications instantanées : `run(clé, fonction)` verrouille la clé pendant l'appel (un second clic est ignoré),
+ *  `busy(clé)` dit si elle est en cours (`"*"` = n'importe laquelle). Quitter l'onglet est signalé tant que ça dure. */
+export function useInstant() {
+  const ref = useRef(new Set());
+  const [keys, setKeys] = useState(() => new Set());
+  const any = keys.size > 0;
+  useEffect(() => {
+    if (!any) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [any]);
+  const busy = (key) => (key === "*" ? any : keys.has(key));
+  async function run(key, fn) {
+    if (ref.current.has(key)) return null;
+    ref.current.add(key);
+    setKeys(new Set(ref.current));
+    try {
+      return await fn();
+    } finally {
+      ref.current.delete(key);
+      setKeys(new Set(ref.current));
+    }
+  }
+  return { run, busy, any };
 }

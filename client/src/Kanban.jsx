@@ -34,7 +34,7 @@ function QuickAdd({ onAdd, onCancel }) {
  * Tableau Kanban à la Odoo : colonnes sans fond, cartes plates collées, bande de couleur à gauche.
  * Au tactile (pas de glisser-déposer HTML5), la pastille de statut de chaque carte ouvre un menu.
  */
-export default function Kanban({ tasks, stages, members, canAssign, onMove, onChange, onRemove, onOpen, onSidebar, onQuickAdd, subStats }) {
+export default function Kanban({ tasks, stages, members, canAssign, onMove, onChange, onRemove, onOpen, onSidebar, onQuickAdd, subStats, isBusy = () => false }) {
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
   const [adding, setAdding] = useState(null);
@@ -85,8 +85,8 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                 return (
                   <article
                     key={t.id}
-                    className={`kcard p-${t.priority} ${t.status === "done" ? "is-done" : ""} ${dragId === t.id ? "dragging" : ""}`}
-                    draggable={!!onMove}
+                    className={`kcard p-${t.priority} ${t.status === "done" ? "is-done" : ""} ${dragId === t.id ? "dragging" : ""} ${isBusy(t, "*") ? "is-busy" : ""}`}
+                    draggable={!!onMove && !isBusy(t, "stage")}
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id); }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
                   >
@@ -95,7 +95,7 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                       <button className="ktitle" onClick={() => onOpen(t)}>
                         <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
                       </button>
-                      <PriorityStar priority={t.priority} onChange={(priority) => onChange(t, { priority })} />
+                      <PriorityStar priority={t.priority} busy={isBusy(t, "priority")} onChange={(priority) => onChange(t, { priority })} />
                       <Menu
                         className="k-menu"
                         label={`Actions pour ${t.title}`}
@@ -123,7 +123,7 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                         {t.assigneeId && (canAssign
                           ? <Avatar member={member} name={member ? undefined : "Ancien membre"} size={26} />
                           : <Avatar name="Assignée" size={26} title="Assignée" />)}
-                        <StatusPill compact stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => onMove(t, s)} />
+                        <StatusPill compact busy={isBusy(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => onMove(t, s)} />
                       </div>
                     </div>
                   </article>

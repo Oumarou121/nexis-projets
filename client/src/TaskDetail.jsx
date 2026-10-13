@@ -5,7 +5,7 @@ import { CommentsSkeleton, RowsSkeleton } from "./Skeleton.jsx";
 import LabelChips from "./LabelChips.jsx";
 import TaskDependencies from "./TaskDependencies.jsx";
 import Timesheets from "./Timesheets.jsx";
-import { Avatar, BusyLabel, DateField, Icon, PriorityStar, Spin } from "./ui.jsx";
+import { Avatar, BusyLabel, DateField, Icon, PriorityStar, Spin, useInstant } from "./ui.jsx";
 import { MAX_FILE_BYTES, PRIORITY, STATUS_COLOR, TASK_STATUS, stageColor, fileSize, fmtDuration, isLate, memberName, stageDurations } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 
@@ -53,7 +53,7 @@ const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeti
  * champs sur deux colonnes, onglets, puis la discussion.
  * `pager` = { index, total, onPrev, onNext } pour passer d'une tâche à l'autre.
  */
-export default function TaskDetail({ orgId, projectId, projectName, task, stages, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+export default function TaskDetail({ orgId, projectId, projectName, task, stages, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, isBusy = () => false, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
   const { canEdit } = usePerms();
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
@@ -80,7 +80,10 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
   const [tab, setTab] = useState("description");
   const [scheduling, setScheduling] = useState(false);
   // Une action serveur est en cours : on ne quitte pas la fiche (Échap, fil d'Ariane, pagination, fermeture de l'onglet).
-  const locked = uploading || busy || actBusy || subBusy || childBusy;
+  // Modifications instantanées de cette tâche encore en cours (statut, priorité, échéance…) : même blocage.
+  const bz = (field) => isBusy(task, field);
+  const inst = useInstant(); // cases « fait » des activités
+  const locked = uploading || busy || actBusy || subBusy || childBusy || bz("*") || inst.any;
   useEffect(() => {
     if (!locked) return;
     const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
@@ -345,7 +348,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
     }
   }
 
-  async function toggleActivityDone(activity) {
+  const toggleActivityDone = (activity) => inst.run(activity.id, () => toggleActivityDoneNow(activity));
+  async function toggleActivityDoneNow(activity) {
     try {
       const updated = await api(`${activitiesBase}/${activity.id}`, "PATCH", { done: !activity.done });
       setActivities((a) => a.map((x) => (x.id === activity.id ? updated : x)));
@@ -394,8 +398,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
             const past = i < all.findIndex(([k]) => k === here);
             const tip = d ? `${cur ? "Dans cette étape depuis le" : "Dernière entrée le"} ${fmt(d.since)} · total ${fmtDuration(d.ms)}` : undefined;
             return (
-              <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} disabled={!canEdit} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
-                {past ? <Icon name="check" size={15} /> : <b>{i + 1}</b>}
+              <button key={v} type="button" className={`${cur ? "on" : ""} ${past ? "past" : ""}`} aria-pressed={cur} aria-current={cur ? "step" : undefined} title={tip} disabled={!canEdit || bz("stage")} onClick={async () => !cur && setErr((await onMoveTask(task, v)) ?? "")}>
+                {bz("stage") && cur ? <Spin size={15} className="ib" /> : past ? <Icon name="check" size={15} /> : <b>{i + 1}</b>}
                 <span><i className="st-dot" style={{ background: col, display: "inline-block", marginRight: 6 }} aria-hidden="true" />{l}</span>
                 {d && <small className="dur">{fmtDuration(d.ms)}</small>}
               </button>
@@ -405,10 +409,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
 
         <div className="sheet">
           <div className="row" style={{ flexWrap: "nowrap", alignItems: "center" }}>
-            <PriorityStar priority={task.priority} onChange={async (priority) => setErr((await onChangeTask(task, { priority })) ?? "")} />
+            <PriorityStar priority={task.priority} busy={bz("priority")} onChange={async (priority) => setErr((await onChangeTask(task, { priority })) ?? "")} />
             <h1 className={task.status === "done" ? "done" : ""}>
-              <input aria-label="Titre de la tâche" readOnly={!canEdit} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+              <input aria-label="Titre de la tâche" readOnly={!canEdit || bz("title")} aria-busy={bz("title") || undefined} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
             </h1>
+            {bz("title") && <span className="fv-spin"><Spin size={16} className="ib" /></span>}
           </div>
           <div className="fgrid">
             <div className="fcol">
@@ -418,10 +423,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                   {canAssign ? (
                     <>
                       <Avatar member={members.find((m) => m.userId === task.assigneeId)} size={24} />
-                      <select aria-label="Responsable" disabled={!canEdit} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
+                      <select aria-label="Responsable" disabled={!canEdit || bz("assigneeId")} aria-busy={bz("assigneeId") || undefined} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
                         <option value="">Non assignée</option>
                         {assignable(task.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                       </select>
+                      {bz("assigneeId") && <span className="fv-spin"><Spin size={14} className="ib" /></span>}
                     </>
                   ) : task.assigneeId ? <><Avatar name="Assignée" size={24} />Assignée</> : <span className="muted">Non assignée</span>}
                 </span>
@@ -429,9 +435,9 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
               <div className="frow">
                 <label>Étiquettes</label>
                 <div className="fv wrap">
-                  <LabelChips labels={task.labels} onRemove={canEdit ? (l) => saveLabels((task.labels ?? []).filter((x) => x !== l)) : undefined} />
+                  <LabelChips labels={task.labels} onRemove={canEdit && !bz("labels") ? (l) => saveLabels((task.labels ?? []).filter((x) => x !== l)) : undefined} />
                   {!canEdit ? null : addingLabel ? (
-                    <form onSubmit={addLabel} className="lb-form">
+                    <form onSubmit={addLabel} className="lb-form" inert={bz("labels") ? "" : undefined}>
                       <input
                         autoFocus
                         aria-label="Ajouter des étiquettes"
@@ -443,8 +449,9 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                       />
                     </form>
                   ) : (
-                    <button type="button" className="lb-add" onClick={() => setAddingLabel(true)}><Icon name="plus" size={13} />Ajouter</button>
+                    <button type="button" className="lb-add" disabled={bz("labels")} onClick={() => setAddingLabel(true)}><Icon name="plus" size={13} />Ajouter</button>
                   )}
+                  {bz("labels") && <span className="fv-spin"><Spin size={14} className="ib" /></span>}
                 </div>
               </div>
               {task.createdBy && (
@@ -458,7 +465,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
               <div className="frow">
                 <label>Échéance</label>
                 <span className="fv">
-                  <DateField label="Échéance" value={task.dueDate} late={isLate(task)} placeholder="Définir" onChange={async (dueDate) => setErr((await onChangeTask(task, { dueDate })) ?? "")} />
+                  <DateField label="Échéance" busy={bz("dueDate")} value={task.dueDate} late={isLate(task)} placeholder="Définir" onChange={async (dueDate) => setErr((await onChangeTask(task, { dueDate })) ?? "")} />
                   {isLate(task) && <span className="late small">en retard</span>}
                 </span>
               </div>
@@ -467,16 +474,17 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 <div className="seg2" role="radiogroup" aria-labelledby="prio-l">
                   {Object.entries(PRIORITY).map(([v, l]) => (
                     <label key={v}>
-                      <input type="radio" name="task-prio" disabled={!canEdit} value={v} checked={task.priority === v} onChange={async () => setErr((await onChangeTask(task, { priority: v })) ?? "")} />
+                      <input type="radio" name="task-prio" disabled={!canEdit || bz("priority")} value={v} checked={task.priority === v} onChange={async () => setErr((await onChangeTask(task, { priority: v })) ?? "")} />
                       <span>{l}</span>
                     </label>
                   ))}
+                  {bz("priority") && <span className="fv-spin"><Spin size={14} className="ib" /></span>}
                 </div>
               </div>
               <div className="frow" style={features.milestones ? undefined : { display: "none" }}>
                 <label htmlFor="task-ms">Jalon</label>
                 <span className="fv">
-                  <span className="switch"><input id="task-ms" type="checkbox" disabled={!canEdit} checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
+                  <span className={`switch ${bz("isMilestone") ? "sw-busy" : ""}`}><input id="task-ms" type="checkbox" aria-busy={bz("isMilestone") || undefined} disabled={!canEdit || bz("isMilestone")} checked={!!task.isMilestone} onChange={async () => setErr((await onChangeTask(task, { isMilestone: !task.isMilestone })) ?? "")} /><i /></span>
                   <label htmlFor="task-ms" className="muted small" style={{ cursor: canEdit ? "pointer" : "default" }}>Marquer comme étape clé</label>
                 </span>
               </div>
@@ -498,6 +506,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 <textarea
                   aria-label="Description de la tâche"
                   rows={5}
+                  readOnly={bz("description")}
                   maxLength={4000}
                   placeholder="Ajouter une description…"
                   value={desc}
@@ -509,8 +518,8 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 />
                 {descDirty && (
                   <div className="task-desc-actions">
-                    <button type="button" className="pj-ok" onClick={saveDescription}>Enregistrer</button>
-                    <button type="button" className="pj-ghost" onClick={() => setDesc(task.description ?? "")}>Annuler</button>
+                    <button type="button" className={`pj-ok bs ${bz("description") ? "bs-run" : ""}`} disabled={bz("description")} onClick={saveDescription}><BusyLabel busy={bz("description")}>Enregistrer</BusyLabel></button>
+                    <button type="button" className="pj-ghost" disabled={bz("description")} onClick={() => setDesc(task.description ?? "")}>Annuler</button>
                   </div>
                 )}
               </div>
@@ -533,10 +542,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 {subtasks.map((s) => (
                   <li key={s.id}>
                     <label>
-                      <input type="checkbox" disabled={!canEdit} checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
+                      <input type="checkbox" disabled={!canEdit || isBusy(s, "stage")} aria-busy={isBusy(s, "stage") || undefined} checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
                       <span className="bx"><Icon name="check" size={14} /></span>
                       <span className={s.status === "done" ? "done" : ""}>{s.title}</span>
                     </label>
+                    {isBusy(s, "stage") && <Spin size={14} className="ib" />}
                     {canEdit && <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>}
                   </li>
                 ))}
@@ -637,13 +647,14 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                     <button
                       type="button"
                       className={`ta-check ${a.done ? "on" : ""}`}
-                      disabled={!canEdit}
+                      disabled={!canEdit || inst.busy(a.id)}
+                      aria-busy={inst.busy(a.id) || undefined}
                       role="checkbox"
                       aria-checked={a.done}
                       aria-label={a.done ? "Marquer comme à faire" : "Marquer comme terminée"}
                       onClick={() => toggleActivityDone(a)}
                     >
-                      {a.done && <Icon name="check" size={14} />}
+                      {inst.busy(a.id) ? <Spin size={14} className="ib" /> : a.done && <Icon name="check" size={14} />}
                     </button>
                     <div className="ta-main">
                       <p className="ta-sum">{a.summary}</p>

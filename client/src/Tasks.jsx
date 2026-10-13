@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 import Calendar from "./Calendar.jsx";
 import Gantt from "./Gantt.jsx";
@@ -13,7 +13,7 @@ import TaskSearch, { applySearch, groupTasks } from "./TaskSearch.jsx";
 import { CalendarSkeleton, KanbanSkeleton, ListSkeleton, PlanSkeleton, ReportsSkeleton, Skel } from "./Skeleton.jsx";
 import TaskSidebar from "./TaskSidebar.jsx";
 import { featureOn, usePerms } from "./perms.js";
-import { Avatar, BusyLabel, DateField, ErrorState, Icon, PriorityStar, StatusPill } from "./ui.jsx";
+import { Avatar, BusyLabel, DateField, ErrorState, Icon, PriorityStar, Spin, StatusPill } from "./ui.jsx";
 import { PRIORITY, TASK_STATUS, isLate, memberName, projectColor, shortDate } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 
@@ -134,8 +134,34 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     }
   }
 
+  // Modifications instantanées en cours : « idTâche:champ ». Le contrôle touché affiche une petite barre
+  // circulaire et se verrouille (pas de double clic), la fiche ne peut pas être quittée tant que ça dure.
+  const pendingRef = useRef(new Set());
+  const [pending, setPending] = useState(() => new Set());
+  const busyOf = (t, field) => (field === "*" ? [...pending].some((k) => k.startsWith(`${t.id}:`)) : pending.has(`${t.id}:${field}`));
+  async function track(taskId, field, run) {
+    const key = `${taskId}:${field}`;
+    if (pendingRef.current.has(key)) return null; // même champ déjà en cours : clic ignoré
+    pendingRef.current.add(key);
+    setPending(new Set(pendingRef.current));
+    try {
+      return await run();
+    } finally {
+      pendingRef.current.delete(key);
+      setPending(new Set(pendingRef.current));
+    }
+  }
+  const anyPending = pending.size > 0;
+  useEffect(() => {
+    if (!anyPending) return;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [anyPending]);
+
   // N'envoie que le champ modifié (affecter exige un droit en plus, pas changer un statut).
-  async function change(task, changes) {
+  const change = (task, changes) => track(task.id, Object.keys(changes).join("+"), () => changeNow(task, changes));
+  async function changeNow(task, changes) {
     try {
       const updated = await api(`${base}/${task.id}`, "PATCH", changes);
       setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
@@ -217,7 +243,8 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   }
 
   // Déplacement entre colonnes : affiché tout de suite, annulé si le serveur refuse.
-  async function move(task, target) {
+  const move = (task, target) => track(task.id, "stage", () => moveNow(task, target));
+  async function moveNow(task, target) {
     const { stage, body } = stageTarget(target);
     if (stage ? task.stageId === stage.id : task.status === target) return;
     const previous = { status: task.status, stageId: task.stageId, stage: task.stage, stageColor: task.stageColor };
@@ -268,7 +295,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     <tr key={t.id}>
       <td>
         <div className="ttl">
-          <PriorityStar priority={t.priority} onChange={(priority) => change(t, { priority })} />
+          <PriorityStar priority={t.priority} busy={busyOf(t, "priority")} onChange={(priority) => change(t, { priority })} />
           <button className="link" onClick={() => openDetail(t.id)}>
             <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
           </button>
@@ -282,18 +309,19 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         {canAssign ? (
           <div className="ass">
             <Avatar member={who(t.assigneeId)} size={24} />
-            <select aria-label="Assignée à" disabled={!canEdit} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
+            <select aria-label="Assignée à" disabled={!canEdit || busyOf(t, "assigneeId")} aria-busy={busyOf(t, "assigneeId") || undefined} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
               <option value="">Non assignée</option>
               {assignable(t.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
             </select>
+            {busyOf(t, "assigneeId") && <Spin size={14} className="ib" />}
           </div>
         ) : t.assigneeId ? <Avatar name="Assignée" size={24} /> : <span className="muted">—</span>}
       </td>
       <td>
-        <DateField label="Échéance" value={t.dueDate} late={isLate(t)} placeholder="—" onChange={(dueDate) => change(t, { dueDate })} />
+        <DateField label="Échéance" busy={busyOf(t, "dueDate")} value={t.dueDate} late={isLate(t)} placeholder="—" onChange={(dueDate) => change(t, { dueDate })} />
       </td>
       <td><Progress value={progressOf(t)} /></td>
-      <td><StatusPill stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => move(t, s)} /></td>
+      <td><StatusPill busy={busyOf(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => move(t, s)} /></td>
       <td className="acts">
         <button className="icon-btn" onClick={() => setSidebarTask(t)} aria-label={`Aperçu rapide ${t.title}`} title="Aperçu rapide"><Icon name="expand" /></button>
         {canEdit && <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>}
@@ -322,6 +350,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         onFileCount={setFileCount}
         subtasks={subsOf.get(openTask.id) ?? []}
         stages={stages}
+        isBusy={busyOf}
         onChangeTask={change}
         onMoveTask={move}
         onAddSub={addSub}
@@ -381,7 +410,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       {busy ? (
         view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />
       ) : view === "kanban" ? (
-        <Kanban tasks={shown} stages={stages} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Kanban isBusy={busyOf} tasks={shown} stages={stages} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
         <Gantt tasks={shown} dependencies={depsOn ? deps : []} members={members} onMove={move} onChange={canEdit ? change : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "calendar" ? (
