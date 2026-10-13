@@ -44,13 +44,23 @@ export default function App() {
   );
   useEffect(() => { loadMe(); }, [loadMe]);
 
-  // Membres affectables de l'organisation active (vide si NEXIS refuse la liste).
+  // Membres affectables de l'organisation active. `reason` explique une liste vide :
+  // "forbidden" (rôle sans users.read) ou "unavailable" (NEXIS Identity injoignable). `quiet` : sans écran de chargement (Réessayer).
+  const loadPeople = useCallback(
+    (quiet = false) => {
+      if (!orgId) return Promise.resolve();
+      if (!quiet) setPeople((p) => ({ ...p, ready: false }));
+      return api(`/api/organizations/${orgId}/members`)
+        .then((p) => setPeople({ reason: null, ...p, ready: true }))
+        .catch(() => setPeople({ members: [], canAssign: false, reason: "unavailable", ready: true }));
+    },
+    [orgId],
+  );
   useEffect(() => {
     if (!orgId) return;
     setProject(null);
-    setPeople((p) => ({ ...p, ready: false }));
-    api(`/api/organizations/${orgId}/members`).then((p) => setPeople({ ...p, ready: true })).catch(() => setPeople({ members: [], canAssign: false, ready: true }));
-  }, [orgId]);
+    loadPeople();
+  }, [orgId, loadPeople]);
 
   async function openProject(id, taskId = null) {
     try {
@@ -142,7 +152,7 @@ export default function App() {
       <main className="page">
         {err && (orgId ? <div className="content"><ErrorState compact message={err} onRetry={retryFn ?? loadMe} /></div> : <ErrorState message={err} onRetry={loadMe} />)}
         {orgId && project ? (
-          <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
+          <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onReloadPeople={() => loadPeople(true)} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (
           <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} ready={people.ready} onShowMine={() => setTab("mine")} /></div>
         ) : orgId && tab === "activity" ? (

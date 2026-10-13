@@ -32,7 +32,7 @@ const EMPTY = { title: "", description: "", labels: "", assigneeId: "", priority
 const parseLabels = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 
 /** Tâches d'un projet. `members` vient de NEXIS Identity ; `canAssign` = droit de les lister. */
-export default function Tasks({ orgId, project: initial, members, canAssign, ready = true, command, openTaskId = null, onProjectChange, onBack, onNav }) {
+export default function Tasks({ orgId, project: initial, members, canAssign, reason = null, onReloadPeople, ready = true, command, openTaskId = null, onProjectChange, onBack, onNav }) {
   const [project, setProject] = useState(initial);
   const { canEdit } = usePerms();
   const depsOn = featureOn(project, "dependencies");
@@ -405,6 +405,13 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
           </div>
         </div>
       </div>
+      {ready && !canAssign && canEdit && (
+        <p className="alert" role="status" style={{ margin: "0 0 12px" }}>
+          {reason === "unavailable"
+            ? <>La liste des membres est momentanément indisponible : l’assignation est désactivée. {onReloadPeople && <button type="button" className="link" onClick={onReloadPeople}>Réessayer</button>}</>
+            : "Votre rôle ne permet pas de consulter les membres de l’organisation, donc d’assigner des tâches. Demandez à un administrateur le droit « Consulter les utilisateurs »."}
+        </p>
+      )}
       {err && <ErrorState compact message={err} onRetry={load} />}
 
       {busy ? (

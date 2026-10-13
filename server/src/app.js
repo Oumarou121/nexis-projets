@@ -29,8 +29,11 @@ app.get("/api/organizations/:orgId/members", requireAuth, requirePermission("pro
   try {
     res.set("Cache-Control", "no-store").json({ members: await listOrgMembers(req.auth, req.params.orgId), canAssign: true });
   } catch (e) {
-    if (e.status !== 403) throw e;
-    res.json({ members: [], canAssign: false });
+    // 403 : le rôle n'a pas users.read. 502 : NEXIS Identity injoignable ou en erreur. Dans les deux cas
+    // l'écran reste utilisable, mais il doit savoir POURQUOI l'assignation est indisponible.
+    if (e.status === 403) return res.json({ members: [], canAssign: false, reason: "forbidden" });
+    if (e.status === 502) return res.json({ members: [], canAssign: false, reason: "unavailable" });
+    throw e;
   }
 });
 

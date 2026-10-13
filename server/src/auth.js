@@ -84,6 +84,7 @@ export async function listOrgMembers(auth, orgId) {
   try {
     res = await fetch(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/organizations/${orgId}/members`, {
       headers: { Authorization: `Bearer ${auth.token}` },
+      signal: AbortSignal.timeout(10_000), // sans délai, un Identity qui ne répond pas bloque l'assignation sans message
     });
   } catch {
     throw httpError(502, "NEXIS Identity est injoignable.");
