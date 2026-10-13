@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { getOrg, setOrg } from "./session.js";
 import Tasks from "./Tasks.jsx";
 import MyTasks from "./MyTasks.jsx";
 import Dashboard from "./Dashboard.jsx";
 import Activity from "./Activity.jsx";
-import { ErrorState, Icon, Menu, NavMenu } from "./ui.jsx";
+import { EmptyState, ErrorState, Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
@@ -25,18 +25,24 @@ export default function App() {
   const [err, setErr] = useState("");
   const [theme, setThemeState] = useState(getTheme);
   const [openTaskId, setOpenTaskId] = useState(null); // tâche à ouvrir dès le chargement du projet (recherche globale)
+  const [retryFn, setRetryFn] = useState(null); // relance de l'action qui a échoué (ouverture d'un projet)
   const [cmd, setCmd] = useState(null); // commande envoyée au projet ouvert (menu Configuration)
 
-  useEffect(() => {
-    api("/api/me")
-      .then((a) => {
-        setAccess(a);
-        const ids = (a.organizations ?? []).map((o) => o.organizationId);
-        const saved = getOrg();
-        setOrgId(ids.includes(saved) ? saved : ids[0] ?? "");
-      })
-      .catch((e) => setErr(e.message));
-  }, []);
+  // Charge (ou recharge, sans quitter la page) les accès du compte.
+  const loadMe = useCallback(
+    () =>
+      api("/api/me")
+        .then((a) => {
+          setAccess(a);
+          setErr("");
+          const ids = (a.organizations ?? []).map((o) => o.organizationId);
+          const saved = getOrg();
+          setOrgId((cur) => (cur && ids.includes(cur) ? cur : ids.includes(saved) ? saved : ids[0] ?? ""));
+        })
+        .catch((e) => setErr(e.message)),
+    [],
+  );
+  useEffect(() => { loadMe(); }, [loadMe]);
 
   // Membres affectables de l'organisation active (vide si NEXIS refuse la liste).
   useEffect(() => {
@@ -49,11 +55,14 @@ export default function App() {
   async function openProject(id, taskId = null) {
     try {
       const p = await api(`/api/organizations/${orgId}/projects/${id}`);
+      setErr("");
+      setRetryFn(null);
       setOpenTaskId(taskId);
       setProject(p);
       setTab("projects");
     } catch (e) {
       setErr(e.message);
+      setRetryFn(() => () => openProject(id, taskId));
     }
   }
 
@@ -85,7 +94,7 @@ export default function App() {
 
   return (
     <PermsContext.Provider value={perms}>
-      <nav className="nav" aria-label="Menu principal">
+      <nav className={`nav ${orgId ? "" : "nav-empty"}`} aria-label="Menu principal">
         <span className="brand"><img className="logo" src={logo} alt="" width="44" height="34" /><span className="t">NEXIS Projets</span></span>
         {loading && (
           <div className="nav-scroll nav-ph" aria-hidden="true">
@@ -131,7 +140,7 @@ export default function App() {
         </div>
       </nav>
       <main className="page">
-        {err && (orgId ? <div className="content"><ErrorState compact message={err} /></div> : <ErrorState message={err} />)}
+        {err && (orgId ? <div className="content"><ErrorState compact message={err} onRetry={retryFn ?? loadMe} /></div> : <ErrorState message={err} onRetry={loadMe} />)}
         {orgId && project ? (
           <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onBack={() => setProject(null)} onNav={goTo} />
         ) : orgId && tab === "dashboard" ? (
@@ -145,7 +154,7 @@ export default function App() {
         ) : !access && !err ? (
           <PageSkeleton />
         ) : (
-          access && <p className="muted content">Aucune organisation active pour ce compte.</p>
+          access && <EmptyState title="Aucune organisation active" text="Ce compte n’est rattaché à aucune organisation active dans NEXIS. Demandez à un administrateur de vous y ajouter, puis actualisez." onAction={loadMe} />
         )}
       </main>
     </PermsContext.Provider>

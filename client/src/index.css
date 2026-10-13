@@ -1820,3 +1820,6 @@ input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
 .task-desc textarea { min-height: 120px; line-height: 1.5; }
 .task-desc-actions { display: flex; gap: 10px; margin-top: 10px; }
 .task-desc-actions .pj-ok, .task-desc-actions .pj-ghost { min-height: 38px; font-size: 14px; padding: 0 18px; }
+
+/* Sans organisation active il n'y a pas d'onglets au centre : le groupe d'actions reste collé à droite. */
+.nav.nav-empty .r { margin-left: auto; }

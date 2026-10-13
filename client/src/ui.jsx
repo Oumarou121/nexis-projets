@@ -230,7 +230,25 @@ export function ColorPicker({ value, onChange, disabled = false, name = "pj-colo
 }
 
 
-/* ---------- Erreur : carte stylée + bouton « Réessayer » (recharge la page) ---------- */
+/* ---------- Erreur : carte stylée + bouton « Réessayer » (relance l'appel, sans recharger la page) ---------- */
+/** Bouton « Réessayer / Actualiser » : lance `fn` (asynchrone) et renvoie [lancer, enCours]. Pas de rechargement de page :
+ *  la carte reste affichée, le bouton montre la barre circulaire, et le contenu apparaît dès que l'appel réussit. */
+function useRetry(fn) {
+  const [busy, setBusy] = useState(false);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  async function go() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn?.();
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  return [go, busy];
+}
+
 /** « Connexion impossible. Aucun jeton… » → titre + détail ; sinon titre générique + message. */
 function splitError(message = "") {
   const m = /^(Connexion impossible)\.?\s*(.*)$/s.exec(message);
@@ -241,7 +259,7 @@ function splitError(message = "") {
 /** `compact` : bandeau au-dessus d'un contenu déjà affiché ; sinon grande carte centrée (page vide). */
 export function ErrorState({ message, compact = false, onRetry, className = "", style }) {
   const { title, text } = splitError(message);
-  const retry = onRetry ?? (() => window.location.reload());
+  const [retry, busy] = useRetry(onRetry);
   return (
     <div className={`es ${compact ? "es-compact" : ""} ${className}`} role="alert" style={style}>
       <span className="es-ic"><Icon name="alert" size={compact ? 18 : 26} /></span>
@@ -249,7 +267,7 @@ export function ErrorState({ message, compact = false, onRetry, className = "", 
         <h2 className="es-title">{title}</h2>
         {text && <p className="es-text">{text}</p>}
       </div>
-      <button type="button" className="es-retry" onClick={retry}><Icon name="refresh" size={15} />Réessayer</button>
+      <button type="button" className="es-retry" disabled={busy} onClick={retry}><BusyLabel busy={busy}><Icon name="refresh" size={15} />Réessayer</BusyLabel></button>
     </div>
   );
 }
@@ -293,4 +311,19 @@ export function useInstant() {
     }
   }
   return { run, busy, any };
+}
+
+/** Carte d'information (pas une erreur) : même présentation que ErrorState, icône aux couleurs de l'application. */
+export function EmptyState({ icon = "users", title, text, action = "Actualiser", onAction }) {
+  const [run, busy] = useRetry(onAction);
+  return (
+    <div className="es es-info" role="status">
+      <span className="es-ic"><Icon name={icon} size={26} /></span>
+      <div className="es-body">
+        <h2 className="es-title">{title}</h2>
+        {text && <p className="es-text">{text}</p>}
+      </div>
+      <button type="button" className="es-retry" disabled={busy} onClick={run}><BusyLabel busy={busy}><Icon name="refresh" size={15} />{action}</BusyLabel></button>
+    </div>
+  );
 }

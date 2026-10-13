@@ -96,7 +96,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     return { stage: byId ?? stages.find((s) => s.category === target), body: byId ? { stageId: target } : { status: target } };
   };
 
-  const load = useCallback(() => api(base).then(setList).catch((e) => setErr(e.message)).finally(() => setLoaded(true)), [base]);
+  const load = useCallback(() => api(base).then((l) => { setList(l); setErr(""); }).catch((e) => setErr(e.message)).finally(() => setLoaded(true)), [base]);
   useEffect(() => { load(); }, [load]);
 
   // Dépendances de tout le projet (flèches du Gantt). Rechargées à l'ouverture de la vue et au
@@ -405,7 +405,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
           </div>
         </div>
       </div>
-      {err && <ErrorState compact message={err} />}
+      {err && <ErrorState compact message={err} onRetry={load} />}
 
       {busy ? (
         view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />

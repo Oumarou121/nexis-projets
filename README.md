@@ -96,6 +96,11 @@ Voir `DEPLOIEMENT.md`.
 - **Étape 10** : Modernisation du design — cartes avec shadows subtils et bordures arrondies (8px), animations et transitions CSS fluides (fadeIn, slideUp, slideIn), sidebar de détails à droite pour afficher rapidement les informations d'une tâche sans ouvrir le formulaire complet, bouton ℹ dans toutes les vues (liste, kanban, gantt, calendrier) pour ouvrir la sidebar. Composant `TaskSidebar.jsx` ajouté, CSS étendu avec animations et styles de sidebar.
 
 
+## Rappels — fonctionnalités à implémenter
+Ces deux options existaient dans les paramètres du projet (clés `recurring_tasks` et `documents`) sans rien derrière : elles sont **masquées** de l'écran Paramètres tant qu'elles ne sont pas faites. À remettre dans `OPTIONS` et `DEFAULT_SETTINGS` de `client/src/ProjectSettings.jsx` à l'implémentation.
+- **Tâches récurrentes** (« Répéter automatiquement les tâches ») : règle de répétition sur la tâche (jour, semaine, mois, date de fin éventuelle), champ « Répéter » dans la fiche tâche visible seulement si l'option est activée, et création de l'occurrence suivante côté serveur (à la fin de la tâche ou par passe planifiée ; une seule instance de serveur, comme pour les rappels d'échéance).
+- **Documents** (« Classer et partager vos documents avec vos clients ») : onglet Documents au niveau du projet (dossiers, dépôt de fichiers) en s'appuyant sur le stockage des pièces jointes existant (`server/src/storage.js`, `routes/attachments.js`), et partage avec les clients via le mécanisme d'invités externes en lecture seule ; droits à trancher (lecture seule ou dépôt aussi).
+
 ## E-mails (Resend)
 
 Tout envoi d'e-mail passe par `sendMail()` dans `server/src/mail.js` (invitations du mode public à venir, notifications). Aucun autre fichier ne parle à Resend : changer de fournisseur = réécrire cette fonction.

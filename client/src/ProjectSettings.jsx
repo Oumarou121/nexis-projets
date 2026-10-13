@@ -12,9 +12,7 @@ import { confirmDialog } from "./confirm.jsx";
 const DEFAULT_SETTINGS = {
   dependencies: false,
   milestones: false,
-  recurring_tasks: false,
   timesheets: false,
-  documents: false,
 };
 
 // Appliquée par le serveur. « Public » = comme « Interne » pour l'organisation + invités externes en lecture seule.
@@ -24,14 +22,13 @@ const VISIBILITY = [
   ["public", "Public", "Partageable en lecture seule avec des invités externes par e-mail", true],
 ];
 
+// « Tâches récurrentes » et « Documents » ne sont pas encore implémentés : masqués (voir README, « Rappels »).
 const OPTIONS = {
   "Gestion des tâches": [
     ["dependencies", "Dépendances entre tâches", "Définir l'ordre dans lequel les tâches doivent être réalisées"],
     ["milestones", "Jalons", "Suivre les grandes étapes à atteindre pour réussir"],
-    ["recurring_tasks", "Tâches récurrentes", "Répéter automatiquement les tâches"],
   ],
   "Gestion du temps": [["timesheets", "Feuilles de temps", "Enregistrer le temps passé sur les tâches"]],
-  "Documents et analyse": [["documents", "Documents", "Classer et partager vos documents avec vos clients"]],
 };
 
 /** Paramètres du projet (fenêtre) : visibilité et fonctions activables. Enregistrés dès qu'on les change. */

@@ -378,7 +378,7 @@ export default function Projects({ orgId, onOpen, members = [], ready = true }) 
         </label>
       </div>
 
-      {err && <ErrorState compact message={err} />}
+      {err && <ErrorState compact message={err} onRetry={load} />}
 
       {busy && (view === "cards" ? <ProjectCardsSkeleton /> : <ProjectTimelineSkeleton />)}
       {!busy && shown.length > 0 && view === "timeline" && <Timeline list={shown} members={members} onOpen={onOpen} />}

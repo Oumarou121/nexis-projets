@@ -42,7 +42,7 @@
 .es-ic { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); }
 .es-title { margin: 0; font-size: 18px; font-weight: 700; color: var(--tx); }
 .es-text { margin: 6px 0 0; color: var(--mut); font-size: 14px; line-height: 1.5; }
-.es-retry { margin-top: 4px; }
+.es-retry { margin-top: 4px; position: relative; }
 .es-compact { flex-direction: row; text-align: left; align-items: center; gap: 12px; max-width: none; margin: 0 0 14px; padding: 12px 14px; box-shadow: none; border-color: color-mix(in srgb, var(--bad) 45%, var(--bd)); background: color-mix(in srgb, var(--bad) 8%, var(--card)); }
 .es-compact .es-ic { width: 34px; height: 34px; flex: none; }
 .es-compact .es-body { flex: 1; min-width: 0; }
@@ -50,3 +50,4 @@
 .es-compact .es-text { margin: 2px 0 0; font-size: 13px; }
 .es-compact .es-retry { margin: 0; flex: none; }
 @media (max-width: 520px) { .es-compact { flex-wrap: wrap; } .es-compact .es-retry { width: 100%; } }
+.es-info .es-ic { color: var(--pri); background: color-mix(in srgb, var(--pri) 14%, transparent); }

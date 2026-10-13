@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Avatar, ErrorState, Icon } from "./ui.jsx";
 import { DashboardSkeleton } from "./Skeleton.jsx";
@@ -40,13 +40,13 @@ export default function Dashboard({ orgId, members, ready = true, onShowMine }) 
   const [d, setD] = useState(null);
   const [err, setErr] = useState("");
 
-  useEffect(() => {
-    setD(null);
-    setErr("");
-    api(`/api/organizations/${orgId}/dashboard`).then(setD).catch((e) => setErr(e.message));
-  }, [orgId]);
+  const load = useCallback(
+    () => api(`/api/organizations/${orgId}/dashboard`).then((x) => { setD(x); setErr(""); }).catch((e) => setErr(e.message)),
+    [orgId],
+  );
+  useEffect(() => { setD(null); setErr(""); load(); }, [load]);
 
-  if (err) return <ErrorState message={err} />;
+  if (err) return <ErrorState message={err} onRetry={load} />;
   if (!d || !ready) return <DashboardSkeleton />;
 
   const open = d.tasksTotal - d.tasksByStatus.done;

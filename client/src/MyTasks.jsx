@@ -1,5 +1,5 @@
 import { KpiSkeleton, MyTasksSkeleton, Skel } from "./Skeleton.jsx";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
 import LabelChips from "./LabelChips.jsx";
 import { ErrorState, Icon, PriorityStar, StatusPill, useInstant } from "./ui.jsx";
@@ -32,9 +32,8 @@ export default function MyTasks({ orgId, onOpenProject }) {
   const base = `/api/organizations/${orgId}/my-tasks`;
   const inst = useInstant();
 
-  useEffect(() => {
-    api(base).then(setList).catch((e) => setErr(e.message));
-  }, [base]);
+  const load = useCallback(() => api(base).then((l) => { setList(l); setErr(""); }).catch((e) => setErr(e.message)), [base]);
+  useEffect(() => { load(); }, [load]);
 
   const setStatus = (t, status) => inst.run(t.id, () => setStatusNow(t, status));
   async function setStatusNow(t, status) {
@@ -124,7 +123,7 @@ export default function MyTasks({ orgId, onOpenProject }) {
         )}
         {filtered && <button type="button" className="mt-clear" onClick={() => setF({ q: "", status: "", priority: "", due: "", label: "" })}>Effacer les filtres</button>}
       </div>
-      {err && <div className="mt-err"><ErrorState compact message={err} /></div>}
+      {err && <div className="mt-err"><ErrorState compact message={err} onRetry={load} /></div>}
       {!list && !err ? <MyTasksSkeleton /> : (
       <div className="table-wrap lt-wrap fade-in">
         <table className="lt mt-table">

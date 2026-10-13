@@ -95,7 +95,7 @@ export default function Activity({ orgId, members, ready = true, onOpenProject }
           {FILTERS.map(([v, l]) => <button key={v} type="button" className={kind === v ? "on" : ""} onClick={() => { setList(null); setKind(v); }}>{l}</button>)}
         </div>
       </div>
-      {err && <div className="mt-err"><ErrorState compact message={err} /></div>}
+      {err && <div className="mt-err"><ErrorState compact message={err} onRetry={() => load()} /></div>}
       {(!list || !ready) && !err ? <ActivitySkeleton /> : (
       <div className="ac-feed fade-in">
         {days.map((day) => (
