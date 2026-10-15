@@ -13,11 +13,18 @@ export async function api(path, method = "GET", body) {
   const token = getToken();
   if (!token) return reauth("Aucun jeton valide reçu de NEXIS.");
 
-  const res = await fetch(`${BASE}${path}`, {
+  const send = () => fetch(`${BASE}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  // Une lecture qui tombe sur une panne passagère du serveur (500/502/503/504) est retentée une fois, sans rien afficher.
+  // Jamais pour une écriture : la rejouer pourrait la dupliquer.
+  let res = await send();
+  if (method === "GET" && [500, 502, 503, 504].includes(res.status)) {
+    await new Promise((r) => setTimeout(r, 600));
+    res = await send();
+  }
   if (res.status === 204) return null;
   const json = await res.json().catch(() => ({}));
   if (res.status === 401) return reauth(json.error);

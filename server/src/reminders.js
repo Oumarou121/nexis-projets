@@ -1,3 +1,4 @@
+import { clip } from "./util.js";
 import { db } from "./db.js";
 import { notify } from "./notifications.js";
 
@@ -31,8 +32,9 @@ export async function runDueReminders(now = new Date()) {
     const todo = (tasks ?? []).filter((t) => t.assignee_id && !t.is_milestone);
     if (todo.length === 0) return 0;
 
-    const { data: projects } = await db.from("projects").select("id, organization_id").in("id", [...new Set(todo.map((t) => t.project_id))]);
+    const { data: projects } = await db.from("projects").select("id, organization_id, name").in("id", [...new Set(todo.map((t) => t.project_id))]);
     const orgOf = new Map((projects ?? []).map((p) => [p.id, p.organization_id]));
+    const nameOf = new Map((projects ?? []).map((p) => [p.id, p.name]));
 
     for (const t of todo) {
       const orgId = orgOf.get(t.project_id);
@@ -43,9 +45,10 @@ export async function runDueReminders(now = new Date()) {
       const since = new Date(now.getTime() - (late ? 7 : 2) * DAY).toISOString();
       const { data: seen } = await db.from("notifications").select("id").eq("user_id", t.assignee_id).eq("type", type).eq("task_id", t.id).gte("created_at", since).limit(1);
       if (seen?.length) continue;
+      const where = `« ${clip(t.title, 70)} » (projet « ${clip(nameOf.get(t.project_id), 50)} »)`;
       const title = late
-        ? `En retard (échéance le ${fr(t.due_date)}) : « ${t.title} »`
-        : `Échéance ${t.due_date === today ? "aujourd’hui" : "demain"} : « ${t.title} »`;
+        ? `En retard (échéance le ${fr(t.due_date)}) : ${where}`
+        : `Échéance ${t.due_date === today ? "aujourd’hui" : "demain"} : ${where}`;
       if (await notify({ orgId, userId: t.assignee_id, actorId: null, type, projectId: t.project_id, taskId: t.id, title, mail: true })) created += 1;
     }
   } catch (e) {

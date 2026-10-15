@@ -56,7 +56,7 @@ const days = (n) => new Date(NOW.getTime() + n * 86_400_000);
 describe("rappels d'échéance", () => {
   test("une passe prévient les bonnes personnes, avec le bon type et le bon texte", async () => {
     assert.equal(await runAt(NOW), 4);
-    assert.deepEqual(mine(A, "task_due_soon").map((n) => n.title).sort(), ["Échéance aujourd’hui : « T2 »", "Échéance demain : « T1 »"]);
+    assert.deepEqual(mine(A, "task_due_soon").map((n) => n.title).sort(), [`Échéance aujourd’hui : « T2 » (projet « ${P_INT} »)`, `Échéance demain : « T1 » (projet « ${P_INT} »)`]);
     assert.equal(mine(A, "task_overdue").length, 1);
     assert.ok(mine(A, "task_overdue")[0].title.startsWith("En retard (échéance le "));
     assert.equal(mine(B, "task_due_soon").length, 1, "membre d'un projet privé : prévenu");
@@ -85,6 +85,6 @@ describe("rappels d'échéance", () => {
     // 8 jours plus tard : T3 relancée (signalée il y a 8 jours) + T6 arrive à échéance aujourd'hui.
     assert.equal(await runAt(days(8)), 2);
     assert.equal(mine(A, "task_overdue").filter((n) => n.title.includes("« T3 »")).length, 2);
-    assert.ok(mine(A, "task_due_soon").some((n) => n.title === "Échéance aujourd’hui : « T6 »"));
+    assert.ok(mine(A, "task_due_soon").some((n) => n.title === `Échéance aujourd’hui : « T6 » (projet « ${P_INT} »)`));
   });
 });

@@ -2,7 +2,7 @@ import { notify } from "../notifications.js";
 import { Router } from "express";
 import { db } from "../db.js";
 import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
-import { DATE_RE, PRIORITIES, assertProject, unwrap } from "../util.js";
+import { DATE_RE, PRIORITIES, assertProject, clip, unwrap } from "../util.js";
 import comments from "./comments.js";
 import attachments from "./attachments.js";
 import activities from "./activities.js";
@@ -121,7 +121,7 @@ async function assertAssignee(req, assigneeId) {
 const notifyAssigned = (req, row) =>
   notify({
     orgId: req.params.orgId, userId: row.assignee_id, actorId: req.auth.userId, type: "task_assigned",
-    projectId: row.project_id, taskId: row.id, title: `Tâche assignée : ${row.title}`, auth: req.auth,
+    projectId: row.project_id, taskId: row.id, title: `La tâche « ${clip(row.title, 70)} » vous a été assignée dans le projet « ${clip(req.project?.name, 50)} »`, auth: req.auth,
   });
 
 const router = Router({ mergeParams: true });

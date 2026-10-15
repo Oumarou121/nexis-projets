@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import Portal, { portalToken } from "./Portal.jsx";
+import { captureDeepLink } from "./deepLink.js";
 import { captureLaunch, getToken, goToNexis } from "./session.js";
 import { applyTheme } from "./theme.js";
 import "./index.css";
@@ -13,6 +14,7 @@ const guestToken = portalToken();
 if (guestToken) {
   createRoot(document.getElementById("root")).render(<Portal token={guestToken} />);
 } else {
+captureDeepLink(); // lien direct vers une tâche : à mettre de côté avant une éventuelle redirection vers NEXIS
 captureLaunch(); // range le jeton reçu de NEXIS Identity avant tout rendu
 
 // Pas de session : on part vers NEXIS Identity AVANT tout rendu (aucun écran de l'application n'est

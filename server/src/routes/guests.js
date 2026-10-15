@@ -4,7 +4,8 @@ import { db } from "../db.js";
 import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
 import { unwrap } from "../util.js";
 import { logActivity } from "../activity.js";
-import { escapeHtml, isEmail, sendMail } from "../mail.js";
+import { isEmail, sendMail } from "../mail.js";
+import { buildGuestInvite } from "../emailTemplates.js";
 
 // Gestion des invités d'un projet « public ». Monté sous .../projects/:projectId/guests, derrière
 // projectGuard. Tout est réservé à projects.update : les adresses des invités sont des données personnelles.
@@ -65,15 +66,11 @@ async function deliver(req, guest, token, days) {
   const project = req.project.name;
   const link = linkFor(token);
   const who = await inviterName(req);
-  const expiry = days ? ` Ce lien est valable ${days} jour${days > 1 ? "s" : ""}.` : "";
-  const intro = `${who ? `${who} vous invite` : "Vous êtes invité"} à consulter le projet « ${project} » sur NEXIS Projets, en lecture seule.`;
-  const foot = `Ce lien est personnel : ne le transférez pas.${expiry} Si vous n'attendiez pas cette invitation, ignorez ce message.`;
+  const mail = buildGuestInvite({ who, project, link, days });
   try {
     const { sent } = await sendMail({
       to: guest.email,
-      subject: `Invitation : projet « ${project} »`,
-      text: `${intro}\n\nOuvrir le projet : ${link}\n\n${foot}`,
-      html: `<p style="font:15px/1.5 system-ui,sans-serif;margin:0 0 16px">${escapeHtml(intro)}</p><p style="margin:0 0 24px"><a href="${escapeHtml(link)}" style="font:600 14px system-ui,sans-serif">Ouvrir le projet</a></p><p style="font:12px/1.5 system-ui,sans-serif;color:#667;margin:0">${escapeHtml(foot)}</p>`,
+      ...mail,
       idempotencyKey: `guest-${guest.id}-${hashToken(token).slice(0, 12)}`,
     });
     return sent ? { emailSent: true } : { emailSent: false, link };

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { getOrg, setOrg } from "./session.js";
+import { takeDeepLink } from "./deepLink.js";
 import Tasks from "./Tasks.jsx";
 import MyTasks from "./MyTasks.jsx";
 import Dashboard from "./Dashboard.jsx";
@@ -26,6 +27,7 @@ export default function App() {
   const [theme, setThemeState] = useState(getTheme);
   const [openTaskId, setOpenTaskId] = useState(null); // tâche à ouvrir dès le chargement du projet (recherche globale)
   const [retryFn, setRetryFn] = useState(null); // relance de l'action qui a échoué (ouverture d'un projet)
+  const deepRef = useRef(takeDeepLink()); // lien direct vers une tâche reçu par e-mail, consommé une fois
   const [cmd, setCmd] = useState(null); // commande envoyée au projet ouvert (menu Configuration)
 
   // Charge (ou recharge, sans quitter la page) les accès du compte.
@@ -37,7 +39,12 @@ export default function App() {
           setErr("");
           const ids = (a.organizations ?? []).map((o) => o.organizationId);
           const saved = getOrg();
-          setOrgId((cur) => (cur && ids.includes(cur) ? cur : ids.includes(saved) ? saved : ids[0] ?? ""));
+          const want = deepRef.current?.orgId;
+          if (want && !ids.includes(want)) {
+            deepRef.current = null;
+            setErr("Ce lien mène à une organisation à laquelle votre compte n’a pas accès.");
+          } else if (want) setOrg(want);
+          setOrgId((cur) => (want ? want : cur && ids.includes(cur) ? cur : ids.includes(saved) ? saved : ids[0] ?? ""));
         })
         .catch((e) => setErr(e.message)),
     [],
@@ -61,6 +68,17 @@ export default function App() {
     setProject(null);
     loadPeople();
   }, [orgId, loadPeople]);
+
+  // Lien direct : on retrouve le projet de la tâche, puis on l'ouvre sur cette tâche.
+  useEffect(() => {
+    const d = deepRef.current;
+    if (!d || !orgId || orgId !== d.orgId) return;
+    deepRef.current = null;
+    api(`/api/organizations/${orgId}/tasks/${d.taskId}`)
+      .then((t) => openProject(t.projectId, t.id))
+      .catch(() => setErr("Cette tâche est introuvable, ou vous n’y avez plus accès."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
 
   async function openProject(id, taskId = null) {
     try {

@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { lookupMemberEmail, serviceEmailEnabled } from "./auth.js";
-import { escapeHtml, sendMail } from "./mail.js";
+import { sendMail } from "./mail.js";
+import { digestHtml, taskUrl } from "./emailTemplates.js";
 
 // Résumé quotidien par e-mail : une fois par jour, à chaque personne qui a des tâches à suivre, ses tâches
 // ASSIGNÉES en retard, pour aujourd'hui et des 3 prochains jours. Rien à signaler : pas d'e-mail.
@@ -45,7 +46,7 @@ export function localTime(now, tz) {
 }
 
 /** Gabarit : objet, texte et HTML. Les titres viennent des utilisateurs : échappés dans le HTML. */
-export function renderDigest({ today, late, dueToday, soon }) {
+export function renderDigest({ today, late, dueToday, soon, orgId }) {
   const url = (process.env.APP_URL ?? "").replace(/\/+$/, "");
   const link = /^https?:\/\//.test(url) ? url : "";
   const footer = "Vous recevez ce résumé car des tâches vous sont assignées dans NEXIS Projets. Pour ne plus le recevoir, décochez l’option dans le panneau des notifications (la cloche).";
@@ -77,19 +78,17 @@ export function renderDigest({ today, late, dueToday, soon }) {
     footer,
   ].join("\n");
 
-  const html =
-    `<p style="font:600 16px/1.5 system-ui,sans-serif;margin:0 0 16px">Votre résumé du ${escapeHtml(fr(today))}</p>` +
-    sections
-      .map(
-        (s) =>
-          `<p style="font:600 14px/1.5 system-ui,sans-serif;margin:16px 0 4px">${escapeHtml(s.title)} (${s.items.length})</p>` +
-          `<ul style="font:14px/1.6 system-ui,sans-serif;margin:0;padding-left:20px">${shown(s)
-            .map((t) => `<li>${escapeHtml(line(t, s.withDate))}</li>`)
-            .join("")}${more(s) > 0 ? `<li>… et ${more(s)} autre${more(s) > 1 ? "s" : ""}</li>` : ""}</ul>`,
-      )
-      .join("") +
-    (link ? `<p style="margin:24px 0"><a href="${escapeHtml(link)}" style="font:600 14px system-ui,sans-serif">Ouvrir NEXIS Projets</a></p>` : "") +
-    `<p style="font:12px/1.5 system-ui,sans-serif;color:#667;margin:${link ? "0" : "24px 0 0"}">${escapeHtml(footer)}</p>`;
+  const html = digestHtml({
+    dateLabel: fr(today),
+    summary: parts.join(", "),
+    footer,
+    sections: sections.map((s) => ({
+      title: s.title,
+      count: s.items.length,
+      more: more(s),
+      rows: shown(s).map((t) => ({ title: t.title, project: t.project, due: s.withDate ? fr(t.due) : "", url: taskUrl(orgId, t.id) })),
+    })),
+  });
 
   return { subject: `Résumé du ${fr(today)} : ${parts.join(", ")}`, text, html };
 }
@@ -148,7 +147,7 @@ export async function runDailyDigests(now = new Date()) {
       const key = `${p.organization_id}:${t.assignee_id}`;
       if (!groups.has(key)) groups.set(key, { orgId: p.organization_id, userId: t.assignee_id, late: [], dueToday: [], soon: [] });
       const g = groups.get(key);
-      const item = { title: t.title, project: p.name, due: t.due_date };
+      const item = { id: t.id, title: t.title, project: p.name, due: t.due_date };
       (t.due_date < today ? g.late : t.due_date === today ? g.dueToday : g.soon).push(item);
     }
     if (groups.size === 0) return 0;

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db.js";
 import { UUID_RE, hasPermission, httpError, listOrgMembers, requirePermission } from "../auth.js";
-import { assertProject, assertTask, unwrap } from "../util.js";
+import { assertProject, assertTask, clip, unwrap } from "../util.js";
 import { logActivity } from "../activity.js";
 import { notify } from "../notifications.js";
 
@@ -54,12 +54,12 @@ async function notifyComment(req, { project, task, mentions }) {
   const base = { orgId: req.params.orgId, actorId: req.auth.userId, projectId: project.id, taskId: task.id, auth: req.auth };
 
   for (const userId of mentioned) {
-    await notify({ ...base, userId, type: "task_mentioned", title: `${author} vous a mentionné dans « ${task.title} »` });
+    await notify({ ...base, userId, type: "task_mentioned", title: `${author} vous a mentionné dans la tâche « ${clip(task.title, 70)} » (projet « ${clip(project.name, 50)} »)` });
   }
   const row = unwrap(await db.from("tasks").select("assignee_id, created_by").eq("id", task.id).maybeSingle());
   const concerned = [...new Set([row?.assignee_id, row?.created_by].filter(Boolean))].filter((id) => !mentioned.includes(id));
   for (const userId of concerned) {
-    await notify({ ...base, userId, type: "task_commented", title: `${author} a commenté « ${task.title} »`, collapseUnread: true });
+    await notify({ ...base, userId, type: "task_commented", title: `${author} a commenté la tâche « ${clip(task.title, 70)} » (projet « ${clip(project.name, 50)} »)`, collapseUnread: true });
   }
 }
 

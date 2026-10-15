@@ -6,6 +6,7 @@ import myTasks from "./routes/myTasks.js";
 import dashboard from "./routes/dashboard.js";
 import activity from "./routes/activity.js";
 import search from "./routes/search.js";
+import taskLookup from "./routes/taskLookup.js";
 import notifications from "./routes/notifications.js";
 import portal from "./routes/portal.js";
 import { templateRouter } from "./routes/stages.js";
@@ -40,6 +41,7 @@ app.get("/api/organizations/:orgId/members", requireAuth, requirePermission("pro
 app.use("/api/organizations/:orgId/activity", requireAuth, activity);
 app.use("/api/organizations/:orgId/dashboard", requireAuth, dashboard);
 app.use("/api/organizations/:orgId/search", requireAuth, search);
+app.use("/api/organizations/:orgId/tasks", requireAuth, taskLookup);
 // Portail des invités : SANS authentification NEXIS (le jeton d'invitation est l'identifiant). Doit rester
 // totalement séparé du reste : il n'utilise ni requireAuth ni projectGuard.
 app.use("/api/portal", portal);
@@ -49,8 +51,12 @@ app.use("/api/organizations/:orgId/stage-template", requireAuth, templateRouter)
 app.use("/api/organizations/:orgId/projects", requireAuth, projects);
 
 // Express 5 relaie les promesses rejetées des handlers async vers ce gestionnaire.
-app.use((err, _req, res, _next) => {
-  if (err.status) return res.status(err.status).json({ error: err.message });
+app.use((err, req, res, _next) => {
+  if (err.status) {
+    if (err.status >= 500) console.error(`[api] ${req.method} ${req.originalUrl} → ${err.status} ${err.message}`); // quelle API échoue, et quand
+    return res.status(err.status).json({ error: err.message });
+  }
+  console.error(`[api] ${req.method} ${req.originalUrl} → erreur non prévue`);
   console.error(err);
   res.status(500).json({ error: "Erreur interne." });
 });

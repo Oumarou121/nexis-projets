@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { listOrgMembers, lookupMemberEmail, serviceEmailEnabled } from "./auth.js";
-import { escapeHtml, sendMail } from "./mail.js";
+import { sendMail } from "./mail.js";
+import { appLink, notificationHtml, taskUrl } from "./emailTemplates.js";
 import { pushEnabled, sendPush } from "./push.js";
 
 // Notifications dans l'application. notify() est le POINT D'ENTRÉE UNIQUE : les routes disent
@@ -52,7 +53,7 @@ export async function notify({ orgId, userId, actorId = null, type, projectId = 
       console.error("[notifications] écriture impossible :", error.message);
       return false;
     }
-    if (auth || mail) track(emailNotification({ auth, orgId, userId, type, title: String(title).slice(0, 200), id: created?.id }));
+    if (auth || mail) track(emailNotification({ auth, orgId, userId, type, taskId, title: String(title).slice(0, 200), id: created?.id }));
     if (pushEnabled()) track(pushNotification({ userId, type, projectId, taskId, title: String(title).slice(0, 200), id: created?.id }));
     return true;
   } catch (e) {
@@ -77,17 +78,15 @@ export async function emailEnabled(userId) {
   return data?.email_enabled !== false;
 }
 
-/** Gabarit : l'objet et le texte sont le titre de la notification ; aucun contenu du projet n'est ajouté. */
-export function renderEmail({ title }) {
-  const url = (process.env.APP_URL ?? "").replace(/\/+$/, "");
-  const link = /^https?:\/\//.test(url) ? url : "";
+/** Gabarit : l'objet et le texte sont le titre de la notification ; aucun contenu du projet n'est ajouté. Le HTML vient de emailTemplates.js. */
+export function renderEmail({ type, title, orgId, taskId }) {
+  const link = appLink();
+  const task = taskUrl(orgId, taskId);
   const footer = "Vous recevez cet e-mail car vous avez une notification dans NEXIS Projets. Pour ne plus en recevoir par e-mail, décochez l’option dans le panneau des notifications (la cloche).";
   return {
     subject: title,
-    text: `${title}\n\n${link ? `Ouvrir NEXIS Projets : ${link}\n\n` : ""}${footer}`,
-    html: `<p style="font:15px/1.5 system-ui,sans-serif;margin:0 0 16px">${escapeHtml(title)}</p>${
-      link ? `<p style="margin:0 0 24px"><a href="${escapeHtml(link)}" style="font:600 14px system-ui,sans-serif">Ouvrir NEXIS Projets</a></p>` : ""
-    }<p style="font:12px/1.5 system-ui,sans-serif;color:#667;margin:0">${escapeHtml(footer)}</p>`,
+    text: `${title}\n\n${task ? `Consulter la tâche : ${task}\n\n` : link ? `Ouvrir NEXIS Projets : ${link}\n\n` : ""}${footer}`,
+    html: notificationHtml({ type, title, orgId, taskId }),
   };
 }
 
@@ -106,12 +105,12 @@ async function recipientEmail({ auth, orgId, userId }) {
   return members.find((m) => m.userId === userId)?.email ?? null;
 }
 
-async function emailNotification({ auth, orgId, userId, type, title, id }) {
+async function emailNotification({ auth, orgId, userId, type, title, id, taskId }) {
   try {
     if (!(await emailEnabled(userId))) return;
     const to = await recipientEmail({ auth, orgId, userId });
     if (!to) return;
-    await sendMail({ to, ...renderEmail({ type, title }), idempotencyKey: id ? `notification-${id}` : undefined });
+    await sendMail({ to, ...renderEmail({ type, title, orgId, taskId }), idempotencyKey: id ? `notification-${id}` : undefined });
   } catch (e) {
     // La cloche a déjà la notification : un e-mail raté (pas de droit, quota, panne) n'est qu'un avertissement.
     console.warn(`[notifications] e-mail non envoyé (${type}) :`, e.message);

@@ -58,7 +58,7 @@ describe("e-mail des rappels d'échéance", () => {
     await idle();
     assert.equal(sent.length, 1);
     assert.deepEqual(sent[0].to, [`${uid(A)}@test.example`]);
-    assert.equal(sent[0].subject, "Échéance demain : « T1 »");
+    assert.equal(sent[0].subject, "Échéance demain : « T1 » (projet « P »)");
     assert.deepEqual(app.internalCalls[0], { organizationId: ORG, userIds: [uid(A)] });
   });
 

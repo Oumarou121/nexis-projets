@@ -49,7 +49,7 @@ describe("assignation", () => {
     assert.equal(out.unread, 1);
     assert.deepEqual(
       [out.items[0].type, out.items[0].projectId, out.items[0].taskId, out.items[0].title, out.items[0].read],
-      ["task_assigned", P_INT, T_INT, "Tâche assignée : Tâche ouverte", false],
+      ["task_assigned", P_INT, T_INT, "La tâche « Tâche ouverte » vous a été assignée dans le projet « Projet ouvert »", false],
     );
     assert.equal((await list(MEMBER)).items.length, 0);
   });
@@ -63,7 +63,7 @@ describe("assignation", () => {
   test("créer une tâche déjà assignée prévient l'assigné", async () => {
     const r = await call("POST", `${projects}/${P_INT}/tasks`, { as: MEMBER, body: { title: "Neuve", assigneeId: uid(OTHER) } });
     assert.equal(r.status, 201);
-    assert.equal((await list(OTHER)).items[0].title, "Tâche assignée : Neuve");
+    assert.equal((await list(OTHER)).items[0].title, "La tâche « Neuve » vous a été assignée dans le projet « Projet ouvert »");
   });
 });
 
@@ -129,7 +129,7 @@ describe("commentaires et mentions", () => {
     assert.equal((await call("POST", comments(P_INT, T_INT), { as: OUTSIDER, body: { body: "Bien reçu" } })).status, 201);
     const forCreator = await of(MEMBER, "task_commented");
     assert.equal(forCreator.length, 1);
-    assert.equal(forCreator[0].title.endsWith("a commenté « Tâche ouverte »"), true);
+    assert.equal(forCreator[0].title.endsWith("a commenté la tâche « Tâche ouverte » (projet « Projet ouvert »)"), true);
     assert.equal((await of(OUTSIDER, "task_commented")).length, 0, "l'auteur n'est pas prévenu");
   });
 
@@ -138,7 +138,7 @@ describe("commentaires et mentions", () => {
     assert.equal(r.status, 201);
     const m = await of(OTHER, "task_mentioned");
     assert.equal(m.length, 1, "mention unique malgré le doublon");
-    assert.ok(m[0].title.includes("vous a mentionné dans « Tâche ouverte »"));
+    assert.ok(m[0].title.includes("vous a mentionné dans la tâche « Tâche ouverte » (projet « Projet ouvert »)"));
     assert.equal(m[0].taskId, T_INT);
     assert.equal((await of(OTHER, "task_commented")).length, 0);
     assert.equal((await of(MEMBER, "task_mentioned")).length, 0, "on ne se mentionne pas soi-même");
@@ -215,7 +215,7 @@ describe("canal e-mail", () => {
     const m = sent[0];
     assert.deepEqual(m.to, [`${uid(OUTSIDER)}@test.example`]);
     assert.equal(m.from, "NEXIS <x@d.fr>");
-    assert.equal(m.subject, "Tâche assignée : Relire <b>le</b> plan");
+    assert.equal(m.subject, "La tâche « Relire <b>le</b> plan » vous a été assignée dans le projet « Projet ouvert »");
     assert.ok(m.html.includes("Relire &lt;b&gt;le&lt;/b&gt; plan"), "titre échappé dans le HTML");
     assert.ok(m.text.includes("https://projets.example.com"), "lien vers l'application");
     assert.ok(!m.text.includes("example.com/ "), "pas de double barre");

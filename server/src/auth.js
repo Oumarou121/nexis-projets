@@ -47,6 +47,32 @@ export async function requireAuth(req, _res, next) {
   }
 }
 
+/** GET vers NEXIS Identity : délai de 10 s et jusqu'à 2 nouvelles tentatives (coupure réseau, 502-504). Lecture seule : sans risque à rejouer. */
+export async function identityGet(url, init = {}, delay = 200) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(10_000) });
+      if (res.status >= 502 && res.status <= 504 && attempt < 2) {
+        await new Promise((r) => setTimeout(r, delay * 2 ** attempt));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (attempt >= 2) throw e;
+      await new Promise((r) => setTimeout(r, delay * 2 ** attempt));
+    }
+  }
+}
+
+/** Corps JSON de NEXIS Identity ; une page d'erreur HTML devient un 502 (et non un 500 « erreur interne »). */
+async function identityJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    throw httpError(502, "Réponse inattendue de NEXIS Identity.");
+  }
+}
+
 // Droits venant de NEXIS Identity (GET /api/me), mis en cache 30 s par utilisateur.
 const cache = new Map();
 const TTL_MS = 30_000;
@@ -57,7 +83,7 @@ export async function getAccess(auth) {
 
   let res;
   try {
-    res = await fetch(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/me`, {
+    res = await identityGet(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/me`, {
       headers: { Authorization: `Bearer ${auth.token}` },
     });
   } catch {
@@ -66,7 +92,7 @@ export async function getAccess(auth) {
   if (res.status === 401) throw httpError(401, "Session refusée par NEXIS Identity.");
   if (!res.ok) throw httpError(502, "Réponse inattendue de NEXIS Identity.");
 
-  const data = await res.json();
+  const data = await identityJson(res);
   cache.set(auth.userId, { at: Date.now(), data });
   return data;
 }
@@ -82,9 +108,8 @@ export async function listOrgMembers(auth, orgId) {
 
   let res;
   try {
-    res = await fetch(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/organizations/${orgId}/members`, {
+    res = await identityGet(`${process.env.NEXIS_IDENTITY_URL.replace(/\/+$/, "")}/api/organizations/${orgId}/members`, {
       headers: { Authorization: `Bearer ${auth.token}` },
-      signal: AbortSignal.timeout(10_000), // sans délai, un Identity qui ne répond pas bloque l'assignation sans message
     });
   } catch {
     throw httpError(502, "NEXIS Identity est injoignable.");
@@ -93,7 +118,7 @@ export async function listOrgMembers(auth, orgId) {
   if (res.status === 403) throw httpError(403, "Le droit de consulter les membres est requis pour affecter une tâche.");
   if (!res.ok) throw httpError(502, "Réponse inattendue de NEXIS Identity.");
 
-  const { members = [] } = await res.json();
+  const { members = [] } = await identityJson(res);
   const data = members
     .filter((m) => m.status === "active")
     .map((m) => ({ userId: m.userId, email: m.email, firstName: m.firstName, lastName: m.lastName }));
