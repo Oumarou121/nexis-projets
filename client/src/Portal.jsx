@@ -49,7 +49,7 @@ export default function Portal({ token }) {
   const [folded, setFolded] = useState({}); // id de groupe → true (replié) / false (déplié) ; absent = valeur par défaut
 
   useEffect(() => {
-    document.title = "Projet partagé · NEXIS Projets";
+    document.title = "Projet partagé · Projets";
     // Page privée : pas d'indexation, pas de Referer vers d'autres sites.
     for (const [name, content] of [["robots", "noindex, nofollow"], ["referrer", "no-referrer"]]) {
       const m = document.createElement("meta");
@@ -122,7 +122,7 @@ export default function Portal({ token }) {
   return (
     <>
       <header className="pt-bar">
-        <span className="pt-brandw"><img className="pt-logo" src={logo} alt="" width="44" height="34" /><span className="pt-brand">NEXIS Projets</span></span>
+        <span className="pt-brandw"><img className="pt-logo" src={logo} alt="" width="44" height="34" /><span className="pt-brand">Projets</span></span>
         <div className="pt-right">
           <span className="pt-ro">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>

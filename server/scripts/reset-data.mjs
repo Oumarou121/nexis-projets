@@ -1,4 +1,4 @@
-// Remet les données du module NEXIS Projets à zéro : projets, tâches, commentaires, pièces jointes (table ET fichiers),
+// Remet les données du module Projets à zéro : projets, tâches, commentaires, pièces jointes (table ET fichiers),
 // notifications, jetons push, préférences, journal du résumé quotidien. Le schéma est conservé.
 //
 // Usage (depuis server/) :

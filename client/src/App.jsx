@@ -8,6 +8,7 @@ import Dashboard from "./Dashboard.jsx";
 import Activity from "./Activity.jsx";
 import { EmptyState, ErrorState, Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
+import { LANGS, getLang, setLang, t } from "./i18n.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
 import logo from "./assets/logo.png";
@@ -25,6 +26,7 @@ export default function App() {
   const [people, setPeople] = useState({ members: [], canAssign: false, ready: false });
   const [err, setErr] = useState("");
   const [theme, setThemeState] = useState(getTheme);
+  const [lang, setLangState] = useState(getLang);
   const [openTaskId, setOpenTaskId] = useState(null); // tâche à ouvrir dès le chargement du projet (recherche globale)
   const [retryFn, setRetryFn] = useState(null); // relance de l'action qui a échoué (ouverture d'un projet)
   const deepRef = useRef(takeDeepLink()); // lien direct vers une tâche reçu par e-mail, consommé une fois
@@ -99,10 +101,17 @@ export default function App() {
     setOrgId(id);
   }
 
-  function pickTheme(t) {
-    setTheme(t);
-    setThemeState(t);
+  function pickTheme(th) {
+    setTheme(th);
+    setThemeState(th);
   }
+
+  function pickLang(code) {
+    setLang(code);
+    setLangState(code);
+  }
+
+  const tr = (key, vars) => t(lang, key, vars);
 
   const orgName = access?.organizations?.find((o) => o.organizationId === orgId)?.organizationSlug ?? "";
   const orgAccess = access?.organizations?.find((o) => o.organizationId === orgId);
@@ -122,25 +131,25 @@ export default function App() {
 
   return (
     <PermsContext.Provider value={perms}>
-      <nav className={`nav ${orgId ? "" : "nav-empty"}`} aria-label="Menu principal">
-        <span className="brand"><img className="logo" src={logo} alt="" width="44" height="34" /><span className="t">NEXIS Projets</span></span>
+      <nav className={`nav ${orgId ? "" : "nav-empty"}`} aria-label={tr("nav.main")}>
+        <span className="brand"><img className="logo" src={logo} alt="" width="44" height="34" /><span className="t">Projets</span></span>
         {loading && (
           <div className="nav-scroll nav-ph" aria-hidden="true">
-            {["Projets", "Mes tâches", "Tableau de bord", "Activité"].map((l) => <button key={l} className="nl" tabIndex={-1}>{l}</button>)}
+            {["projects", "mine", "dashboard", "activity"].map((k) => <button key={k} className="nl" tabIndex={-1}>{tr(`nav.${k}`)}</button>)}
           </div>
         )}
         {orgId && (
           <div className="nav-scroll nav-in">
-            <button className={`nl ${project || tab === "projects" ? "on" : ""}`} onClick={() => goTo("projects")}>Projets</button>
-            <button className={`nl ${!project && tab === "mine" ? "on" : ""}`} onClick={() => goTo("mine")}>Mes tâches</button>
-            <button className={`nl ${!project && tab === "dashboard" ? "on" : ""}`} onClick={() => goTo("dashboard")}>Tableau de bord</button>
-            <button className={`nl ${!project && tab === "activity" ? "on" : ""}`} onClick={() => goTo("activity")}>Activité</button>
+            <button className={`nl ${project || tab === "projects" ? "on" : ""}`} onClick={() => goTo("projects")}>{tr("nav.projects")}</button>
+            <button className={`nl ${!project && tab === "mine" ? "on" : ""}`} onClick={() => goTo("mine")}>{tr("nav.mine")}</button>
+            <button className={`nl ${!project && tab === "dashboard" ? "on" : ""}`} onClick={() => goTo("dashboard")}>{tr("nav.dashboard")}</button>
+            <button className={`nl ${!project && tab === "activity" ? "on" : ""}`} onClick={() => goTo("activity")}>{tr("nav.activity")}</button>
             {inProject && (
               <NavMenu
-                label="Configuration"
+                label={tr("nav.config")}
                 items={[
-                  { label: "Paramètres du projet", icon: "gear", onClick: () => sendCmd("settings") },
-                  ...(featureOn(project, "milestones") ? [{ label: "Jalons", icon: "flag", onClick: () => sendCmd("milestones") }] : []),
+                  { label: tr("nav.projectSettings"), icon: "gear", onClick: () => sendCmd("settings") },
+                  ...(featureOn(project, "milestones") ? [{ label: tr("nav.milestones"), icon: "flag", onClick: () => sendCmd("milestones") }] : []),
                 ]}
               />
             )}
@@ -149,19 +158,22 @@ export default function App() {
         <div className="r">
           {orgName && access?.organizations?.length === 1 && <span className="org-name">{orgName}</span>}
           {access?.organizations?.length > 1 && (
-            <select aria-label="Organisation" value={orgId} onChange={(e) => pickOrg(e.target.value)}>
+            <select aria-label={tr("nav.organization")} value={orgId} onChange={(e) => pickOrg(e.target.value)}>
               {access.organizations.map((o) => (
                 <option key={o.organizationId} value={o.organizationId}>{o.organizationSlug ?? o.organizationId}</option>
               ))}
             </select>
           )}
+          <select className="lang-select" aria-label={tr("nav.language")} title={tr("nav.language")} value={lang} onChange={(e) => pickLang(e.target.value)}>
+            {LANGS.map((l) => <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>)}
+          </select>
           {loading && <span className="pop nav-ph" aria-hidden="true"><span className="icon-btn" /></span>}
           {orgId && <span className="nav-in"><GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} /></span>}
           {orgId && <span className="nav-in"><NotificationBell key={orgId} orgId={orgId} onOpen={openProject} /></span>}
           <Menu
-            label={`Thème : ${THEMES[theme]}`}
+            label={tr("theme.label", { x: tr(`theme.${theme}`) })}
             trigger={<Icon name={THEME_ICON[theme]} size={18} />}
-            items={Object.entries(THEMES).map(([v, l]) => ({ label: l, icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
+            items={Object.entries(THEMES).map(([v, l]) => ({ label: tr(`theme.${v}`), icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
           />
           {loading && <span className="org-av nav-ph" aria-hidden="true" />}
           {orgName && <span className="org-av nav-in" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}

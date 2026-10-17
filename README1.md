@@ -1,4 +1,4 @@
-# NEXIS Projets — Gestion de projet
+# Projets — Gestion de projet
 
 Module de gestion de projet de la suite NEXIS, avec une interface inspirée d'Odoo (violet `#714B67`, turquoise `#017E84`, thèmes clair et sombre).
 

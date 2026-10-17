@@ -1823,3 +1823,18 @@ input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
 
 /* Sans organisation active il n'y a pas d'onglets au centre : le groupe d'actions reste collé à droite. */
 .nav.nav-empty .r { margin-left: auto; }
+
+/* ---------- Sélecteur de langue (en-tête) : même rendu que NEXIS Documents ---------- */
+.nav .r select.lang-select { order: 5; margin-left: 0; padding: 4px 6px; font-size: 13px; font-weight: 700; letter-spacing: .02em; cursor: pointer; }
+.nav .r select.lang-select:hover { color: var(--tx); }
+
+/* ---------- En-tête : dimensions fixes, identiques à NEXIS Documents (≥ 721 px) ---------- */
+@media (min-width: 721px) {
+  .nav-scroll { box-sizing: border-box; height: 50px; align-items: center; }
+  .nav .r { box-sizing: border-box; height: 50px; }
+  .nav button.nl { box-sizing: border-box; height: 40px; padding: 0 18px; font-size: 14.5px; font-weight: 500; line-height: 1.5; }
+  .nav button.nl.on, .nav button.nl.on:hover { font-weight: 600; }
+}
+@media (min-width: 721px) and (max-width: 1100px) {
+  .nav button.nl { padding: 0 20px; font-size: 14px; line-height: 1.5; }
+}

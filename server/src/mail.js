@@ -7,7 +7,7 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 // sendMail() : les appelants ne connaissent ni Resend ni son format.
 //
 //   RESEND_API_KEY : clé API Resend (secret, serveur uniquement).
-//   MAIL_FROM      : expéditeur sur un domaine VÉRIFIÉ chez Resend, ex. « NEXIS Projets <projets@votre-domaine.com> ».
+//   MAIL_FROM      : expéditeur sur un domaine VÉRIFIÉ chez Resend, ex. « Projets <projets@votre-domaine.com> ».
 //   Sans clé, rien n'est envoyé : le message est écrit dans la console (développement, tests).
 //
 // Limite du plan gratuit Resend : 100 e-mails par jour et 3 000 par mois (jour UTC). Au-delà, Resend
