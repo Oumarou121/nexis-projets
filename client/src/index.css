@@ -1838,3 +1838,90 @@ input[readonly].ptitle, .ptitle[readonly] { cursor: default; }
 @media (min-width: 721px) and (max-width: 1100px) {
   .nav button.nl { padding: 0 20px; font-size: 14px; line-height: 1.5; }
 }
+
+
+/* =====================================================================================================
+   En-tête V2b (maquette validée) — marque · navigation · commandes, onglet actif souligné.
+   Sous 900 px : une seule ligne (56 px) + barre d'onglets basse (.hd2-tabbar), plus de 2e ligne.
+   Les anciennes règles « .nav / .nl / .nav-scroll / .brand / .logo / .org-av » ci-dessus ne s'appliquent plus
+   (plus aucun élément n'utilise ces classes) ; elles peuvent être supprimées dans un nettoyage ultérieur.
+   ===================================================================================================== */
+:root { --hd-h: 64px; --tb-h: 0px; }
+@media (max-width: 899px) { :root { --hd-h: 56px; --tb-h: 60px; } }
+.sidebar { top: var(--hd-h); height: calc(100vh - var(--hd-h)); }
+.tpage { min-height: calc(100vh - var(--hd-h)); }
+
+.hd2 { position: sticky; top: 0; z-index: 40; display: flex; align-items: center; min-height: var(--hd-h); background: var(--card); border-bottom: 1px solid var(--bd); font-size: 14px; }
+.hd2-brand { align-self: stretch; display: flex; align-items: center; gap: 12px; padding-inline: 20px 22px; border-inline-end: 1px solid var(--bd); background: color-mix(in srgb, var(--bg) 70%, var(--card)); white-space: nowrap; }
+.hd2-logo { height: 34px; width: 38px; object-fit: contain; flex: none; }
+.hd2-bt { display: grid; line-height: 1.1; }
+.hd2-bt small { font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--mut); }
+.hd2-bt b { font: 700 17px Sora, "DM Sans", system-ui, sans-serif; letter-spacing: -.01em; }
+
+.hd2-nav { align-self: stretch; display: flex; align-items: stretch; gap: 2px; padding-inline: 10px; min-width: 0; }
+.hd2-nav .pop { align-self: stretch; display: flex; }
+.hd2 button.hd2-tab { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 100%; padding: 0 12px; border: 0; border-radius: 0; background: none; color: var(--mut); font-weight: 500; white-space: nowrap; }
+.hd2 button.hd2-tab:hover { background: color-mix(in srgb, var(--hov) 55%, transparent); color: var(--tx); border: 0; }
+.hd2 button.hd2-tab::after { content: ""; position: absolute; inset-inline: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: transparent; }
+.hd2 button.hd2-tab.on, .hd2 button.hd2-tab.open { color: var(--tx); font-weight: 600; }
+.hd2 button.hd2-tab.on::after { background: var(--pri); }
+.hd2 button.hd2-tab.on .ic { color: var(--pri); }
+.hd2 button.hd2-tab:active, .hd2 button.hd2-tb:active { transform: none; }
+
+.hd2-tools { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; padding-inline: 14px 20px; }
+.gs-lbl, .gs-k { display: none; }
+.hd2 .gs-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; width: 38px; padding: 0; border: 1px solid var(--bd-s); border-radius: 10px; background: var(--bg); color: var(--mut); }
+.hd2 .gs-btn:hover { border-color: var(--mut); background: var(--bg); color: var(--tx); }
+.gs-k { font: 500 11px "DM Sans", sans-serif; border: 1px solid var(--bd-s); border-radius: 5px; padding: 1px 6px; background: var(--card); color: var(--mut); }
+.hd2-clu { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--bd); border-radius: 10px; }
+.hd2-clu .pop > .icon-btn { width: 34px; height: 32px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--mut); }
+.hd2-clu .pop > .icon-btn:hover { background: var(--hov); color: var(--tx); border: 0; }
+.hd2-clu .bell-badge { top: 1px; right: 1px; }
+.hd2-clu select, .hd2-org select { flex: none; height: 32px; padding: 0 6px; border: 0; border-radius: 7px; background: transparent; background-image: none; box-shadow: none; color: var(--mut); font-size: 12.5px; font-weight: 700; letter-spacing: .03em; }
+.hd2-clu select:hover { background: var(--hov); color: var(--tx); }
+.hd2-sep { width: 1px; height: 28px; margin-inline: 6px; background: var(--bd); }
+.hd2-org { display: flex; align-items: center; gap: 9px; color: var(--mut); font-size: 13.5px; white-space: nowrap; }
+.hd2-org select { max-width: 130px; font-size: 13.5px; font-weight: 500; letter-spacing: 0; }
+.hd2-av { display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--sec); color: var(--on-sec); font-weight: 700; font-size: 13px; }
+
+.hd2-tabbar { display: none; }
+
+@media (min-width: 1280px) {
+  .hd2 .gs-btn { width: 220px; justify-content: flex-start; padding: 0 8px 0 12px; }
+  .gs-lbl { display: inline; flex: 1; text-align: start; }
+  .gs-k { display: inline; }
+}
+@media (max-width: 1099px) {
+  .hd2-nm { display: none; }
+  .hd2 button.hd2-tab .ic { display: none; }
+  .hd2-brand { padding-inline: 16px 18px; }
+  .hd2-tools { padding-inline: 8px 14px; }
+}
+@media (max-width: 899px) {
+  .hd2-nav { display: none; }
+  .hd2-brand { border-inline-end: 0; background: transparent; padding-inline: 12px 6px; }
+  .hd2-bt small { display: none; }
+  .hd2-logo { height: 30px; width: 34px; }
+  .page { padding-bottom: calc(var(--tb-h) + 24px + env(safe-area-inset-bottom, 0px)); }
+  .hd2-tabbar { display: flex; gap: 2px; position: fixed; inset-inline: 0; bottom: 0; z-index: 45; padding: 6px 6px calc(8px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--bd); background: var(--card); }
+  /* Barre basse : icônes seules ; l'onglet actif (ou le menu ouvert) déroule son libellé dans une pastille. */
+  .hd2 button.hd2-tb, .hd2-tabbar button.hd2-tb { position: relative; flex: 1 1 0; min-width: 0; width: 100%; height: 44px; flex-direction: row; gap: 6px; padding: 0 6px; border: 0; border-radius: 22px; background: none; color: var(--mut); font-size: 13px; font-weight: 500; transition: flex-grow .2s ease, background-color .15s; }
+  .hd2-tabbar button.hd2-tb:hover { background: var(--hov); color: var(--tx); }
+  .hd2-tabbar button.hd2-tb.on:hover, .hd2-tabbar button.hd2-tb.open:hover { background: var(--pri-soft); color: var(--pri); }
+  .hd2-tabbar button.hd2-tb.on, .hd2-tabbar button.hd2-tb.open { flex-grow: 2.6; background: var(--pri-soft); color: var(--pri); font-weight: 600; }
+  .hd2-tabbar button.hd2-tb:not(.on):not(.open) .nl-t { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .hd2-tbw { flex: 1 1 0; min-width: 0; transition: flex-grow .2s ease; }
+  .hd2-tbw:has(.hd2-tb.open) { flex-grow: 2.6; }
+  .hd2-tb .nl-t { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hd2-tb > .ic:last-child { display: none; }
+  .hd2-tabbar .menu.up { top: auto; bottom: calc(100% + 8px); right: 0; left: auto; }
+}
+@media (max-width: 599px) {
+  .hd2-sep { display: none; }
+  .hd2-tools { padding-inline: 4px 10px; gap: 4px; }
+  .hd2-clu { border: 0; padding: 0; }
+  .hd2-org:has(select) .hd2-av { display: none; }
+  .hd2-org select { max-width: 84px; }
+}
+@media (prefers-reduced-motion: reduce) { .hd2-tabbar button.hd2-tb, .hd2-tbw { transition: none !important; } }
+@media print { .hd2, .hd2-tabbar { display: none; } }

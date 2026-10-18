@@ -88,8 +88,10 @@ export default function GlobalSearch({ orgId, onOpen }) {
   return (
     <>
       <span className="pop">
-        <button type="button" className="icon-btn" aria-label="Rechercher (Ctrl K)" title="Rechercher (Ctrl K)" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+        <button type="button" className="icon-btn gs-btn" aria-label="Rechercher (Ctrl K)" title="Rechercher (Ctrl K)" aria-haspopup="dialog" onClick={() => setOpen(true)}>
           <Icon name="search" size={18} />
+          <span className="gs-lbl" aria-hidden="true">Rechercher</span>
+          <kbd className="gs-k" aria-hidden="true">Ctrl K</kbd>
         </button>
       </span>
       {open && (

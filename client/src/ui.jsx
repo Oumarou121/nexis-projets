@@ -41,7 +41,12 @@ const PATHS = {
   bell: "M6 17V11a6 6 0 1112 0v6l2 2H4zM10 21a2 2 0 004 0",
   alert: "M12 3.5L2.5 20h19L12 3.5zM12 10v4.5M12 17.5h.01",
   refresh: "M20 5v5h-5M4 19v-5h5M5.6 9A7 7 0 0118.4 7.6L20 10M18.4 15A7 7 0 015.6 16.4L4 14",
-  lock: "M7 11V8a5 5 0 0110 0v3M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z",
+  lock: "M7 11V8a5 5 0 0110 0v3M6 11h12a1 1 0 011 1v7a1 1 0 01-1 1H6a1 1 0 01-1-1v-7a1 1 0 011-1z",  // Jeu d'icônes de la navigation (Tabler, outline) — onglets de l'en-tête et barre basse mobile.
+  nvKanban: "M4 4l6 0 M14 4l6 0 M4 10a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2l0 -8 M14 10a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v2a2 2 0 0 1 -2 2h-2a2 2 0 0 1 -2 -2l0 -2",
+  nvChecklist: "M9.615 20h-2.615a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v8 M14 19l2 2l4 -4 M9 8h4 M9 12h2",
+  nvDashboard: "M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1 M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1 M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1 M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1",
+  nvTimeline: "M4 16l6 -7l5 5l5 -6 M14 14a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M9 9a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M3 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0 M19 8a1 1 0 1 0 2 0a1 1 0 1 0 -2 0",
+  nvAdjust: "M4 10a2 2 0 1 0 4 0a2 2 0 0 0 -4 0 M6 4v4 M6 12v8 M10 16a2 2 0 1 0 4 0a2 2 0 0 0 -4 0 M12 4v10 M12 18v2 M16 7a2 2 0 1 0 4 0a2 2 0 0 0 -4 0 M18 4v1 M18 9v11",
 };
 
 export function Icon({ name, size = 16, className = "", ...rest }) {
@@ -194,15 +199,15 @@ export function DateField({ value, onChange, label, late = false, placeholder = 
 }
 
 /* ---------- Entrée de menu avec sous-menu déroulant (Reporting, Configuration) ---------- */
-export function NavMenu({ label, icon, items, active }) {
+export function NavMenu({ label, icon, items, active, className = "nl", wrapClass = "", up = false }) {
   const { open, setOpen, ref } = usePopover();
   return (
-    <span className="pop" ref={ref}>
-      <button type="button" className={`nl ${active ? "on" : ""}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {icon && <Icon name={icon} size={16} />} {label} <Icon name="chevron" size={12} />
+    <span className={`pop ${wrapClass}`} ref={ref}>
+      <button type="button" className={`${className} ${active ? "on" : ""} ${open ? "open" : ""}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {icon && <Icon name={icon} size={16} />} <span className="nl-t">{label}</span> <Icon name="chevron" size={12} />
       </button>
       {open && (
-        <div className="menu left" role="menu">
+        <div className={`menu ${up ? "up" : "left"}`} role="menu">
           {items.map((it) => (
             <button key={it.label} role="menuitem" type="button" disabled={it.disabled} title={it.hint} className={`mi ${it.active ? "active" : ""}`} onClick={() => { setOpen(false); it.onClick(); }}>
               {it.icon && <Icon name={it.icon} size={15} />}

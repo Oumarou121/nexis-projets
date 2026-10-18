@@ -18,6 +18,13 @@ import { PermsContext, featureOn } from "./perms.js";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
 
+const NAV_ITEMS = [
+  { k: "projects", icon: "nvKanban" },
+  { k: "mine", icon: "nvChecklist" },
+  { k: "dashboard", icon: "nvDashboard" },
+  { k: "activity", icon: "nvTimeline" },
+];
+
 export default function App() {
   const [access, setAccess] = useState(null);
   const [orgId, setOrgId] = useState("");
@@ -129,56 +136,70 @@ export default function App() {
     setTab(t);
   }
 
+  // Onglets de navigation (header sur grand écran, barre basse sous 900 px) : mêmes entrées, même état actif.
+  const navOn = (k) => (k === "projects" ? !!project || tab === "projects" : !project && tab === k);
+  const cfgItems = [
+    { label: tr("nav.projectSettings"), icon: "gear", onClick: () => sendCmd("settings") },
+    ...(project && featureOn(project, "milestones") ? [{ label: tr("nav.milestones"), icon: "flag", onClick: () => sendCmd("milestones") }] : []),
+  ];
+
   return (
     <PermsContext.Provider value={perms}>
-      <nav className={`nav ${orgId ? "" : "nav-empty"}`} aria-label={tr("nav.main")}>
-        <span className="brand"><img className="logo" src={logo} alt="" width="44" height="34" /><span className="t">Projets</span></span>
+      <header className="hd2">
+        <span className="hd2-brand"><img className="hd2-logo" src={logo} alt="" width="44" height="34" /><span className="hd2-bt"><small>NEXIS</small><b>Projets</b></span></span>
         {loading && (
-          <div className="nav-scroll nav-ph" aria-hidden="true">
-            {["projects", "mine", "dashboard", "activity"].map((k) => <button key={k} className="nl" tabIndex={-1}>{tr(`nav.${k}`)}</button>)}
+          <div className="hd2-nav nav-ph" aria-hidden="true">
+            {NAV_ITEMS.map(({ k }) => <button key={k} className="hd2-tab" tabIndex={-1}><span>{tr(`nav.${k}`)}</span></button>)}
           </div>
         )}
         {orgId && (
-          <div className="nav-scroll nav-in">
-            <button className={`nl ${project || tab === "projects" ? "on" : ""}`} onClick={() => goTo("projects")}>{tr("nav.projects")}</button>
-            <button className={`nl ${!project && tab === "mine" ? "on" : ""}`} onClick={() => goTo("mine")}>{tr("nav.mine")}</button>
-            <button className={`nl ${!project && tab === "dashboard" ? "on" : ""}`} onClick={() => goTo("dashboard")}>{tr("nav.dashboard")}</button>
-            <button className={`nl ${!project && tab === "activity" ? "on" : ""}`} onClick={() => goTo("activity")}>{tr("nav.activity")}</button>
-            {inProject && (
-              <NavMenu
-                label={tr("nav.config")}
-                items={[
-                  { label: tr("nav.projectSettings"), icon: "gear", onClick: () => sendCmd("settings") },
-                  ...(featureOn(project, "milestones") ? [{ label: tr("nav.milestones"), icon: "flag", onClick: () => sendCmd("milestones") }] : []),
-                ]}
-              />
+          <nav className="hd2-nav nav-in" aria-label={tr("nav.main")}>
+            {NAV_ITEMS.map(({ k, icon }) => (
+              <button key={k} className={`hd2-tab ${navOn(k) ? "on" : ""}`} aria-current={navOn(k) ? "page" : undefined} onClick={() => goTo(k)}>
+                <Icon name={icon} size={16} /><span>{tr(`nav.${k}`)}</span>
+              </button>
+            ))}
+            {inProject && <NavMenu className="hd2-tab" icon="nvAdjust" label={tr("nav.config")} items={cfgItems} />}
+          </nav>
+        )}
+        <div className="hd2-tools">
+          {orgId && <span className="nav-in"><GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} /></span>}
+          <div className="hd2-clu">
+            {orgId && <span className="nav-in"><NotificationBell key={orgId} orgId={orgId} onOpen={openProject} /></span>}
+            <Menu
+              label={tr("theme.label", { x: tr(`theme.${theme}`) })}
+              trigger={<Icon name={THEME_ICON[theme]} size={18} />}
+              items={Object.entries(THEMES).map(([v, l]) => ({ label: tr(`theme.${v}`), icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
+            />
+            <select className="lang-select" aria-label={tr("nav.language")} title={tr("nav.language")} value={lang} onChange={(e) => pickLang(e.target.value)}>
+              {LANGS.map((l) => <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>)}
+            </select>
+          </div>
+          <span className="hd2-sep" aria-hidden="true" />
+          <div className="hd2-org">
+            {loading && <span className="hd2-av nav-ph" aria-hidden="true" />}
+            {orgName && <span className="hd2-av nav-in" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
+            {orgName && access?.organizations?.length === 1 && <span className="hd2-nm">{orgName}</span>}
+            {access?.organizations?.length > 1 && (
+              <select aria-label={tr("nav.organization")} value={orgId} onChange={(e) => pickOrg(e.target.value)}>
+                {access.organizations.map((o) => (
+                  <option key={o.organizationId} value={o.organizationId}>{o.organizationSlug ?? o.organizationId}</option>
+                ))}
+              </select>
             )}
           </div>
-        )}
-        <div className="r">
-          {orgName && access?.organizations?.length === 1 && <span className="org-name">{orgName}</span>}
-          {access?.organizations?.length > 1 && (
-            <select aria-label={tr("nav.organization")} value={orgId} onChange={(e) => pickOrg(e.target.value)}>
-              {access.organizations.map((o) => (
-                <option key={o.organizationId} value={o.organizationId}>{o.organizationSlug ?? o.organizationId}</option>
-              ))}
-            </select>
-          )}
-          <select className="lang-select" aria-label={tr("nav.language")} title={tr("nav.language")} value={lang} onChange={(e) => pickLang(e.target.value)}>
-            {LANGS.map((l) => <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>)}
-          </select>
-          {loading && <span className="pop nav-ph" aria-hidden="true"><span className="icon-btn" /></span>}
-          {orgId && <span className="nav-in"><GlobalSearch key={orgId} orgId={orgId} onOpen={openProject} /></span>}
-          {orgId && <span className="nav-in"><NotificationBell key={orgId} orgId={orgId} onOpen={openProject} /></span>}
-          <Menu
-            label={tr("theme.label", { x: tr(`theme.${theme}`) })}
-            trigger={<Icon name={THEME_ICON[theme]} size={18} />}
-            items={Object.entries(THEMES).map(([v, l]) => ({ label: tr(`theme.${v}`), icon: THEME_ICON[v], active: v === theme, onClick: () => pickTheme(v) }))}
-          />
-          {loading && <span className="org-av nav-ph" aria-hidden="true" />}
-          {orgName && <span className="org-av nav-in" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
         </div>
-      </nav>
+      </header>
+      {orgId && (
+        <nav className="hd2-tabbar" aria-label={tr("nav.main")}>
+          {NAV_ITEMS.map(({ k, icon }) => (
+            <button key={k} className={`hd2-tb ${navOn(k) ? "on" : ""}`} aria-current={navOn(k) ? "page" : undefined} onClick={() => goTo(k)}>
+              <Icon name={icon} size={22} /><span className="nl-t">{tr(`nav.${k}`)}</span>
+            </button>
+          ))}
+          {inProject && <NavMenu className="hd2-tb" wrapClass="hd2-tbw" icon="nvAdjust" up label={tr("nav.config")} items={cfgItems} />}
+        </nav>
+      )}
       <main className="page">
         {err && (orgId ? <div className="content"><ErrorState compact message={err} onRetry={retryFn ?? loadMe} /></div> : <ErrorState message={err} onRetry={loadMe} />)}
         {orgId && project ? (
