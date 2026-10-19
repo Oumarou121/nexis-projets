@@ -32,39 +32,43 @@ export async function api(path, method = "GET", body) {
   return json;
 }
 
-/** Envoie un fichier (octets bruts). Le type est forcé en octet-stream : le serveur ne lit jamais ce corps comme du JSON. */
+/**
+ * Envoie un fichier en trois temps, sans le faire transiter par le serveur (hébergement serverless : corps limités
+ * à 4,5 Mo) : URL d'envoi signée demandée au serveur, envoi direct au stockage, puis confirmation au serveur, qui
+ * vérifie que le fichier est bien arrivé avant de l'enregistrer.
+ */
 export async function upload(path, file) {
-  const token = getToken();
-  if (!token) return reauth("Aucun jeton valide reçu de NEXIS.");
-  const qs = `name=${encodeURIComponent(file.name)}&type=${encodeURIComponent(file.type || "application/octet-stream")}`;
-  const res = await fetch(`${BASE}${path}?${qs}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
-    body: file,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (res.status === 401) return reauth(json.error);
-  if (!res.ok) throw new Error(json.error ?? `Erreur ${res.status}`);
-  return json;
+  const name = file.name;
+  const type = file.type || "application/octet-stream";
+  const { uploadId, uploadUrl } = await api(`${path}/upload-url`, "POST", { name, type, size: file.size });
+
+  // Même format que supabase-js (uploadToSignedUrl) : formulaire avec le fichier, sans écrasement.
+  const form = new FormData();
+  form.append("cacheControl", "3600");
+  form.append("", file);
+  let sent;
+  try {
+    sent = await fetch(uploadUrl, { method: "PUT", headers: { "x-upsert": "false" }, body: form });
+  } catch {
+    throw new Error("Envoi du fichier impossible. Vérifiez votre connexion et réessayez.");
+  }
+  if (!sent.ok) throw new Error(sent.status === 413 ? "Fichier trop volumineux (10 Mo maximum)." : "Envoi du fichier impossible.");
+
+  return api(`${path}/confirm`, "POST", { uploadId, name, type });
 }
 
-/** Télécharge un fichier protégé (le jeton est dans l'en-tête, pas dans l'URL) puis le propose à l'enregistrement. */
+/**
+ * Télécharge un fichier protégé : le serveur vérifie les droits et renvoie un lien signé valable 60 s, toujours
+ * en pièce jointe. Le jeton NEXIS ne quitte jamais l'en-tête, et le fichier ne transite pas par le serveur.
+ */
 export async function download(path, fileName) {
-  const token = getToken();
-  if (!token) return reauth("Aucun jeton valide reçu de NEXIS.");
-  const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) return reauth();
-  if (!res.ok) {
-    const json = await res.json().catch(() => ({}));
-    throw new Error(json.error ?? `Erreur ${res.status}`);
-  }
-  const url = URL.createObjectURL(await res.blob());
+  const { url } = await api(`${path}?link=1`);
   const a = document.createElement("a");
   a.href = url;
-  a.download = fileName;
+  a.download = fileName; // ignoré entre domaines ; le lien signé impose déjà le téléchargement et le nom
+  a.rel = "noopener";
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
   return null;
 }

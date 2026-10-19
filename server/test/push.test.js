@@ -91,7 +91,7 @@ describe("envoi", () => {
     assert.deepEqual(sent.map((m) => m.token).sort(), [tok("a"), tok("b")]);
     assert.deepEqual(
       [sent[0].data.title, sent[0].data.body, sent[0].data.projectId, sent[0].data.taskId, sent[0].data.type],
-      ["Projets", "La tâche « Tâche ouverte » vous a été assignée dans le projet « Ouvert »", P_INT, T_INT, "task_assigned"],
+      ["NEXIS Projets", "La tâche « Tâche ouverte » vous a été assignée dans le projet « Ouvert »", P_INT, T_INT, "task_assigned"],
     );
     assert.ok(Object.values(sent[0].data).every((v) => typeof v === "string"));
   });

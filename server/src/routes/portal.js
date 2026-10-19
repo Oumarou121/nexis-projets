@@ -13,8 +13,8 @@ import { TOKEN_RE, hashToken } from "./guests.js";
 //    ni étiquettes, ni pièces jointes, ni commentaires, ni temps passé. Tout champ ajouté plus tard à la
 //    base reste donc invisible tant qu'on ne l'ajoute pas ici.
 export const portalLimits = {
-  failures: createLimiter({ windowMs: 10 * 60_000, max: 10 }), // jetons invalides par IP
-  requests: createLimiter({ windowMs: 60_000, max: 120 }), // requêtes par IP
+  failures: createLimiter({ name: "portal-failures", windowMs: 10 * 60_000, max: 10 }), // jetons invalides par IP
+  requests: createLimiter({ name: "portal-requests", windowMs: 60_000, max: 120 }), // requêtes par IP
 };
 
 const router = Router();
@@ -23,12 +23,12 @@ const notFound = (res) => res.status(404).set("Cache-Control", "no-store").json(
 router.get("/", async (req, res) => {
   res.set({ "Cache-Control": "no-store", "X-Robots-Tag": "noindex", "Referrer-Policy": "no-referrer" });
   const ip = req.ip ?? "?";
-  if (!portalLimits.requests.hit(ip) || portalLimits.failures.blocked(ip)) {
+  if (!(await portalLimits.requests.hit(ip)) || (await portalLimits.failures.blocked(ip))) {
     return res.status(429).set("Retry-After", "60").json({ error: "Trop de requêtes, réessayez dans quelques minutes." });
   }
   const token = req.get("x-portal-token") ?? "";
-  const fail = () => {
-    portalLimits.failures.hit(ip);
+  const fail = async () => {
+    await portalLimits.failures.hit(ip);
     return notFound(res);
   };
   if (!TOKEN_RE.test(token)) return fail();

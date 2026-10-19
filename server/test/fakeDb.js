@@ -32,6 +32,7 @@ const FK = {
 
 export function createFakeDb() {
   const store = Object.fromEntries(TABLES.map((t) => [t, []]));
+  store.objects = new Map(); // fichiers du stockage : chemin → taille
 
   function cascade(table, removed) {
     const ids = new Set(removed.map((r) => r.id));
@@ -223,11 +224,33 @@ export function createFakeDb() {
   const noop = { error: null };
   const db = {
     from: (table) => new Query(table),
+    // Stockage : store.objects (chemin → taille) simule les fichiers du bucket ; un test y dépose un fichier
+    // pour imiter l'envoi direct du navigateur avec l'URL signée.
     storage: {
       from: () => ({
-        upload: async () => noop,
+        upload: async (path, buf) => {
+          store.objects.set(path, buf?.length ?? 0);
+          return noop;
+        },
         download: async () => ({ data: new Blob(["contenu"]), error: null }),
-        remove: async () => noop,
+        remove: async (paths) => {
+          for (const p of paths) store.objects.delete(p);
+          return noop;
+        },
+        createSignedUploadUrl: async (path) => ({
+          data: { signedUrl: `https://storage.test/object/upload/sign/${path}?token=t`, token: "t", path },
+          error: null,
+        }),
+        list: async (prefix, { search = "" } = {}) => ({
+          data: [...store.objects]
+            .filter(([p]) => p.startsWith(`${prefix}/`) && p.slice(prefix.length + 1).includes(search))
+            .map(([p, size]) => ({ name: p.slice(prefix.length + 1), metadata: { size } })),
+          error: null,
+        }),
+        createSignedUrl: async (path, expiresIn, { download } = {}) => ({
+          data: { signedUrl: `https://storage.test/object/sign/${path}?expires=${expiresIn}&download=${encodeURIComponent(download ?? "")}` },
+          error: null,
+        }),
       }),
     },
   };

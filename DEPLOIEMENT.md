@@ -78,6 +78,44 @@ Sans les variables `VITE_FIREBASE_*`, la case push n'apparaît pas dans la cloch
 - [ ] Lancer `npm install` dans `client/` avant le build (dépendance Firebase).
 - [ ] Le domaine du client correspond exactement à `CLIENT_ORIGIN` côté serveur.
 
+## 3 bis. Hébergement sur Vercel (client + API dans un seul projet, plan Hobby)
+Alternative aux sections 2 et 3 : le client est servi en statique et l'API Express tourne en fonction serverless
+([api/index.mjs](api/index.mjs)), sur **le même domaine** (toutes les routes de l'API sont sous `/api`). Plus de CORS ni de
+`VITE_API_URL`. Réglages dans [vercel.json](vercel.json).
+
+Ce qui change par rapport à un serveur Node classique :
+- **Rappels et résumé** : les minuteries du processus ne tournent pas en serverless, et un cron Vercel Hobby ne tourne
+  qu'une fois par jour. C'est **Supabase pg_cron** qui appelle l'API toutes les heures (`/api/cron/reminders` à hh:05,
+  `/api/cron/digest` à hh:10), avec le secret `CRON_SECRET`. La contrainte « une seule instance » disparaît.
+- **Pièces jointes** : Vercel refuse les corps et réponses de plus de 4,5 Mo. Le navigateur envoie donc le fichier
+  **directement** au stockage Supabase avec une URL signée délivrée par l'API (qui vérifie droits, taille et quota, puis
+  confirme que le fichier est arrivé) ; le téléchargement passe par un lien signé de 60 s, toujours en pièce jointe.
+- **Limitation de débit du portail des invités** : compteurs partagés dans **Upstash Redis** (chaque instance serverless
+  aurait sinon son propre compteur). Sans Upstash, la limite existe mais devient approximative.
+
+Étapes :
+- [ ] Vercel → *Add New Project* → importer le dépôt, **Root Directory = `nexis-projets`**. Le reste vient de `vercel.json`
+      (installation, `npm run build`, sortie `client/dist`, fonction `api/index.mjs` de 60 s au plus).
+- [ ] Variables d'environnement (*Settings → Environment Variables*, environnement Production) :
+  - celles de la **section 2**, sauf `PORT`, `CLIENT_ORIGIN` (inutile : même domaine) et `TRUST_PROXY` (réglé
+    automatiquement sur Vercel) ;
+  - `APP_URL` = l'URL Vercel ou le domaine du projet, sans slash final ;
+  - `FIREBASE_SERVICE_ACCOUNT` = le JSON du compte de service **sur une ligne** (pas de fichier sur Vercel) ;
+  - `CRON_SECRET` = une valeur aléatoire d'au moins 32 caractères (ex. `openssl rand -hex 32`) ;
+  - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` : base Redis gratuite sur upstash.com (la même que NEXIS
+    Identity convient : les clés de ce module sont préfixées `nexis-projets:`) ;
+  - côté client : les `VITE_FIREBASE_*` de la section 3 ; **ne pas** définir `VITE_API_URL`.
+- [ ] Déployer, puis vérifier `https://<projet>.vercel.app/api/health` → `{"ok":true}`. Si une variable manque, la
+      fonction répond 500 et ses journaux (*Deployments → Functions*) en donnent la liste.
+- [ ] Supabase du module → *SQL Editor* : créer les deux secrets Vault (URL publique et `CRON_SECRET`), puis exécuter
+      `supabase/migrations/20261020090000_cron_jobs.sql` (les commandes sont en tête du fichier). Vérifier une heure plus
+      tard : `select created, status_code from net._http_response order by created desc limit 5;` → `200`.
+- [ ] Pièces jointes : envoyer un fichier de plus de 5 Mo depuis une tâche, puis le télécharger.
+- [ ] Domaine personnalisé (facultatif) : *Settings → Domains*, puis mettre à jour `APP_URL`, le secret Vault
+      `projets_app_url` et l'URL du module dans NEXIS (section 4).
+- [ ] Ne pas lancer en parallèle un serveur Node classique avec les minuteries actives : mettre `REMINDERS=off` et
+      `DAILY_DIGEST=off` sur tout autre serveur, sinon rappels et résumés partiraient deux fois.
+
 ## 4. Côté NEXIS Identity
 - [ ] `/dashboard/modules` (admin plateforme) : renseigner l'URL du module `projects` avec le domaine du client.
 - [ ] **Activer le module pour chaque organisation** : sans ligne dans `organization_modules`, il est désactivé (opt-in), et `/dashboard/ouvrir/projects` affiche « Cette application n’est pas disponible ».

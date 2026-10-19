@@ -10,15 +10,22 @@ import taskLookup from "./routes/taskLookup.js";
 import notifications from "./routes/notifications.js";
 import portal from "./routes/portal.js";
 import { templateRouter } from "./routes/stages.js";
+import cron from "./routes/cron.js";
 
 const app = express();
 // Derrière un proxy (Render, Nginx…), TRUST_PROXY=1 : sans cela, tous les visiteurs partagent l'IP du proxy
 // et la limitation de débit du portail les pénaliserait ensemble.
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
+// Sur Vercel, le proxy de la plateforme est toujours devant : on lui fait confiance sans réglage.
+else if (process.env.VERCEL) app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(",") ?? false }));
 app.use(express.json({ limit: "100kb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ ok: true })); // même vérification, sous /api (hébergement Vercel)
+
+// Tâches planifiées (rappels, résumé) déclenchées de l'extérieur : voir routes/cron.js.
+app.use("/api/cron", cron);
 
 // Relais des droits NEXIS Identity (utilisateur, organisations, permissions).
 app.get("/api/me", requireAuth, async (req, res) => {
