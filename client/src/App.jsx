@@ -9,6 +9,7 @@ import Activity from "./Activity.jsx";
 import { EmptyState, ErrorState, Icon, Menu, NavMenu } from "./ui.jsx";
 import { THEMES, getTheme, setTheme } from "./theme.js";
 import { LANGS, getLang, setLang, t } from "./i18n.js";
+import { watchNexisPrefs } from "./nexisPrefs.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
 import logo from "./assets/logo.png";
@@ -24,6 +25,18 @@ const NAV_ITEMS = [
   { k: "dashboard", icon: "nvDashboard" },
   { k: "activity", icon: "nvTimeline" },
 ];
+
+const orgLabel = (o) => (o?.organizationName || o?.name || o?.organizationSlug || "").trim();
+
+// Pastille de l'organisation : son logo s'il existe et se charge, sinon l'initiale du nom.
+function OrgAvatar({ name, logo }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <span className="hd2-av nav-in" title={name} aria-hidden="true" style={logo && !broken ? { background: "transparent", overflow: "hidden" } : undefined}>
+      {logo && !broken ? <img src={logo} alt="" width="32" height="32" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={() => setBroken(true)} /> : name[0].toUpperCase()}
+    </span>
+  );
+}
 
 export default function App() {
   const [access, setAccess] = useState(null);
@@ -59,6 +72,22 @@ export default function App() {
     [],
   );
   useEffect(() => { loadMe(); }, [loadMe]);
+
+  // Thème ou langue changés dans NEXIS Identity ou Documents pendant que cet onglet était en arrière-plan.
+  useEffect(
+    () =>
+      watchNexisPrefs((p) => {
+        if (p.theme && THEMES[p.theme]) {
+          document.documentElement.dataset.theme = p.theme;
+          setThemeState(p.theme);
+        }
+        if (p.lang && LANGS.some((l) => l.code === p.lang)) {
+          document.documentElement.lang = p.lang;
+          setLangState(p.lang);
+        }
+      }),
+    [],
+  );
 
   // Membres affectables de l'organisation active. `reason` explique une liste vide :
   // "forbidden" (rôle sans users.read) ou "unavailable" (NEXIS Identity injoignable). `quiet` : sans écran de chargement (Réessayer).
@@ -120,8 +149,10 @@ export default function App() {
 
   const tr = (key, vars) => t(lang, key, vars);
 
-  const orgName = access?.organizations?.find((o) => o.organizationId === orgId)?.organizationSlug ?? "";
   const orgAccess = access?.organizations?.find((o) => o.organizationId === orgId);
+  // Nom de l'organisation (le slug ne sert que de repli) ; sans aucun nom, « nexis » comme NEXIS Documents.
+  const orgName = orgLabel(orgAccess) || (orgId ? "nexis" : "");
+  const orgLogo = orgAccess?.organizationLogoUrl || "";
   const has = (p) => !!access?.platformAdmin || !!orgAccess?.permissions?.includes(p);
   const perms = { canCreate: has("projects.create"), canEdit: has("projects.update"), canDelete: has("projects.delete") };
   const inProject = !!project;
@@ -178,12 +209,12 @@ export default function App() {
           <span className="hd2-sep" aria-hidden="true" />
           <div className="hd2-org">
             {loading && <span className="hd2-av nav-ph" aria-hidden="true" />}
-            {orgName && <span className="hd2-av nav-in" title={orgName} aria-hidden="true">{orgName[0].toUpperCase()}</span>}
+            {orgName && <OrgAvatar key={orgLogo || orgName} name={orgName} logo={orgLogo} />}
             {orgName && access?.organizations?.length === 1 && <span className="hd2-nm">{orgName}</span>}
             {access?.organizations?.length > 1 && (
               <select aria-label={tr("nav.organization")} value={orgId} onChange={(e) => pickOrg(e.target.value)}>
                 {access.organizations.map((o) => (
-                  <option key={o.organizationId} value={o.organizationId}>{o.organizationSlug ?? o.organizationId}</option>
+                  <option key={o.organizationId} value={o.organizationId}>{orgLabel(o) || o.organizationId}</option>
                 ))}
               </select>
             )}

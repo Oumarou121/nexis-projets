@@ -1,7 +1,11 @@
 // Langue de l'interface — même liste et mêmes codes que NEXIS Documents (fr, en, es, ar).
 // Pour l'instant seule la barre de navigation est traduite ; le reste de l'écran reste en français
 // tant que ses textes n'ont pas été migrés vers `t()`.
-const KEY = "nexis.projets.lang";
+import { readNexisPrefs, saveNexisPrefs } from "./nexisPrefs.js";
+
+/** Ancienne clé propre à Projets, reprise une fois. La langue est partagée avec Identity et Documents (nexisPrefs.js). */
+const LEGACY_KEY = "nexis.projets.lang";
+const COOKIE_DOMAIN = import.meta.env.VITE_NEXIS_PREFS_DOMAIN || "";
 export const DEFAULT_LANG = "fr";
 export const LANGS = [
   { code: "fr", name: "Français" },
@@ -78,25 +82,22 @@ const DICT = {
 };
 
 export function getLang() {
-  try {
-    const v = localStorage.getItem(KEY);
-    return v && DICT[v] ? v : DEFAULT_LANG;
-  } catch {
-    return DEFAULT_LANG;
-  }
+  const v = readNexisPrefs({ lang: [LEGACY_KEY] }).lang;
+  return v && DICT[v] ? v : DEFAULT_LANG;
 }
 
 export function setLang(lang) {
   if (!DICT[lang]) return;
   document.documentElement.lang = lang;
-  try {
-    localStorage.setItem(KEY, lang);
-  } catch {
-    /* stockage indisponible : la langue vaut pour cette session seulement */
-  }
+  saveNexisPrefs({ lang }, COOKIE_DOMAIN);
 }
 
-export const applyLang = () => (document.documentElement.lang = getLang());
+/** Avant le premier rendu ; publie aussi une langue trouvée ici (ancienne clé comprise) pour les autres applications. */
+export function applyLang() {
+  const stored = readNexisPrefs({ lang: [LEGACY_KEY] }).lang;
+  if (stored && DICT[stored]) saveNexisPrefs({ lang: stored }, COOKIE_DOMAIN);
+  document.documentElement.lang = getLang();
+}
 
 /** Traduit une clé ; `vars` remplace {nom}. Repli : français, puis la clé elle-même. */
 export function t(lang, key, vars = {}) {

@@ -16,14 +16,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=DM+Sans:wght@400;500;600&display=swap" />
     <script>
-      /* Thème appliqué avant le premier affichage (même clé que src/theme.js) : pas de flash blanc en sombre. */
+      /* Thème appliqué avant le premier affichage : pas de flash blanc en sombre.
+         Même ordre que src/nexisPrefs.js : cookie partagé NEXIS, puis localStorage commun, puis ancienne clé. */
       (function () {
+        var t = null;
         try {
-          var t = localStorage.getItem("nexis.projets.theme");
-          document.documentElement.dataset.theme = t === "dark" || t === "auto" ? t : "light";
-        } catch (e) {
-          document.documentElement.dataset.theme = "light";
-        }
+          var m = /(?:^|;\s*)nexis_prefs=([^;]*)/.exec(document.cookie);
+          if (m) t = new URLSearchParams(decodeURIComponent(m[1])).get("t");
+        } catch (e) {}
+        try {
+          if (t !== "light" && t !== "dark" && t !== "auto") t = localStorage.getItem("nexis.theme") || localStorage.getItem("nexis.projets.theme");
+        } catch (e) {}
+        document.documentElement.dataset.theme = t === "dark" || t === "auto" ? t : "light";
       })();
     </script>
     <style>
