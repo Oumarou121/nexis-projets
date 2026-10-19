@@ -79,9 +79,14 @@ Sans les variables `VITE_FIREBASE_*`, la case push n'apparaît pas dans la cloch
 - [ ] Le domaine du client correspond exactement à `CLIENT_ORIGIN` côté serveur.
 
 ## 3 bis. Hébergement sur Vercel (client + API dans un seul projet, plan Hobby)
-Alternative aux sections 2 et 3 : le client est servi en statique et l'API Express tourne en fonction serverless
-([api/index.mjs](api/index.mjs)), sur **le même domaine** (toutes les routes de l'API sont sous `/api`). Plus de CORS ni de
-`VITE_API_URL`. Réglages dans [vercel.json](vercel.json).
+Alternative aux sections 2 et 3, en mode **Services** de Vercel ([vercel.json](vercel.json)) : deux services dans un
+seul projet et sur **le même domaine**, sans CORS ni `VITE_API_URL` :
+- `client` (dossier `client/`, Vite) : public sur `/` ;
+- `server` (dossier `server/`, Express, entrée `src/index.js`) : public sur `/api/*` (toutes les routes de l'API
+  commencent déjà par `/api`). Sur Vercel, `src/index.js` exporte l'application sans écouter de port ni lancer de
+  minuteries.
+Aucune liaison (binding) entre services : c'est le navigateur qui appelle `/api`, et le serveur n'appelle que des
+adresses externes (NEXIS, Supabase, Resend, Firebase) configurées par variables.
 
 Ce qui change par rapport à un serveur Node classique :
 - **Rappels et résumé** : les minuteries du processus ne tournent pas en serverless, et un cron Vercel Hobby ne tourne
@@ -94,8 +99,9 @@ Ce qui change par rapport à un serveur Node classique :
   aurait sinon son propre compteur). Sans Upstash, la limite existe mais devient approximative.
 
 Étapes :
-- [ ] Vercel → *Add New Project* → importer le dépôt, **Root Directory = `nexis-projets`**. Le reste vient de `vercel.json`
-      (installation, `npm run build`, sortie `client/dist`, fonction `api/index.mjs` de 60 s au plus).
+- [ ] Pousser le dépôt sur GitHub (Vercel lit `vercel.json` sur la branche importée, pas sur le poste).
+- [ ] Vercel → *Add New Project* → importer le dépôt, **Root Directory = `./`** (racine du dépôt nexis-projets),
+      préréglage **Services** (détecté : `client` en Vite, `server` en Express). Le reste vient de `vercel.json`.
 - [ ] Variables d'environnement (*Settings → Environment Variables*, environnement Production) :
   - celles de la **section 2**, sauf `PORT`, `CLIENT_ORIGIN` (inutile : même domaine) et `TRUST_PROXY` (réglé
     automatiquement sur Vercel) ;
