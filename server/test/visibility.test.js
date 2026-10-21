@@ -92,7 +92,7 @@ describe("projet privé : un non-membre ne le voit nulle part", () => {
     const all = ["Projet confidentiel", "Projet ouvert", "Projet secret"];
     assert.deepEqual(names(await call("GET", projects, { as: MEMBER })), all);
     assert.deepEqual(names(await call("GET", projects, { as: FULL })), all);
-    assert.deepEqual(names(await call("GET", projects, { as: ADMIN })), all);
+    assert.equal((await call("GET", projects, { as: ADMIN })).status, 403); // admin plateforme non membre
   });
 
   test("par son identifiant : 404 pour un non-membre, identique à un projet inexistant", async () => {
@@ -356,10 +356,10 @@ describe("gérer les membres", () => {
 });
 
 describe("responsables", () => {
-  test("un responsable (projects.delete) et un administrateur plateforme voient un projet privé sans en être membres", async () => {
+  test("un responsable (projects.delete) voit un projet privé sans en être membre ; pas l'admin plateforme hors organisation", async () => {
     assert.ok(!app.store.project_members.some((m) => m.project_id === P_PRIV && m.user_id === uid(FULL)));
     assert.equal((await call("GET", `${projects}/${P_PRIV}`, { as: FULL })).status, 200);
-    assert.equal((await call("GET", `${projects}/${P_PRIV}`, { as: ADMIN })).status, 200);
+    assert.equal((await call("GET", `${projects}/${P_PRIV}`, { as: ADMIN })).status, 403);
   });
 
   test("tous les droits dans une AUTRE organisation n'ouvrent rien ici", async () => {

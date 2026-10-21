@@ -18,18 +18,42 @@ export function captureLaunch() {
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 
-/** Jeton valide (non expiré) ou null. */
+/** Session NEXIS en cours d'après le cookie « nexis_session » (écrit par nexis-site/lib/nexisSession.js) : identifiant, « out » ou null. */
+function sharedSession() {
+  const m = /(?:^|;\s*)nexis_session=([^;]*)/.exec(document.cookie);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Vrai si ce jeton n'appartient plus à la session NEXIS en cours (déconnexion, autre compte).
+ * Sans cookie (domaines non partagés), on ne sait rien : le jeton vaut jusqu'à son expiration.
+ */
+function replaced(payload) {
+  const shared = sharedSession();
+  return !!shared && (shared === "out" || shared !== payload.session_id);
+}
+
+/** Jeton valide (non expiré, toujours celui de la session NEXIS en cours) ou null. */
 export function getToken() {
   const token = sessionStorage.getItem(TOKEN_KEY);
   if (!token) return null;
   try {
     const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-    if (payload.exp * 1000 > Date.now() + 10_000) return token;
+    if (payload.exp * 1000 > Date.now() + 10_000 && !replaced(payload)) return token;
   } catch {
     /* jeton illisible : traité comme absent */
   }
   sessionStorage.removeItem(TOKEN_KEY);
   return null;
+}
+
+/** Retour sur l'onglet : si la session NEXIS a changé entre-temps (déconnexion, autre compte), on la rouvre. */
+export function watchSession() {
+  const check = () => {
+    if (document.visibilityState === "visible" && sessionStorage.getItem(TOKEN_KEY) && !getToken()) goToNexis();
+  };
+  document.addEventListener("visibilitychange", check);
+  window.addEventListener("focus", check);
 }
 
 export const getOrg = () => localStorage.getItem(ORG_KEY);

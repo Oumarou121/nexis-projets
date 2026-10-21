@@ -4,7 +4,7 @@ import { usePerms } from "./perms.js";
 import { BusyLabel, Icon, Spin } from "./ui.jsx";
 import { STAGE_COLORS, stageColor } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
-const COLOR_NAMES = ["Gris", "Bleu", "Violet", "Orange", "Vert", "Turquoise", "Rose", "Rouge-orangé"];
+const COLOR_NAMES = ["Gris", "Bleu", "Violet", "Orange", "Vert", "Rouge", "Rose", "Rouge-orangé"];
 
 /** Pastille de couleur d'une étape + palette (8 couleurs, ou « Couleur de la catégorie »). */
 function ColorPicker({ stage, disabled, onPick }) {

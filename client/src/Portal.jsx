@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { labelColor, PRIORITY, PROJECT_STATUS, taskColor, TASK_STATUS, todayISO } from "./labels.js";
 import logo from "./assets/logo.png";
+import logoDark from "./assets/logo-dark.png";
 import "./portal.css";
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
@@ -122,7 +123,7 @@ export default function Portal({ token }) {
   return (
     <>
       <header className="pt-bar">
-        <span className="pt-brandw"><img className="pt-logo" src={logo} alt="" width="44" height="34" /><span className="pt-brand">Projets</span></span>
+        <span className="pt-brandw"><img className="pt-logo lg-l" src={logo} alt="" width="44" height="32" /><img className="pt-logo lg-d" src={logoDark} alt="" width="44" height="32" /><span className="pt-brand">Projets</span></span>
         <div className="pt-right">
           <span className="pt-ro">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>

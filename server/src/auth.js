@@ -40,7 +40,9 @@ export async function requireAuth(req, _res, next) {
     if (!UUID_RE.test(payload.sub ?? "") || payload.role !== "authenticated" || payload.is_anonymous) {
       throw httpError(401, "Jeton invalide.");
     }
-    req.auth = { userId: payload.sub, email: payload.email ?? null, token };
+    // sessionId : clé des caches ci-dessous, pour qu'un ancien jeton (session fermée) ne profite pas
+    // des réponses obtenues par la nouvelle session du même utilisateur.
+    req.auth = { userId: payload.sub, email: payload.email ?? null, token, sessionId: payload.session_id ?? null };
     next();
   } catch (e) {
     next(e);
@@ -73,12 +75,14 @@ async function identityJson(res) {
   }
 }
 
-// Droits venant de NEXIS Identity (GET /api/me), mis en cache 30 s par utilisateur.
+// Droits venant de NEXIS Identity (GET /api/me), mis en cache 30 s par session. Identity refuse
+// (401) un jeton dont la session est fermée : une déconnexion est prise en compte en 30 s au plus.
 const cache = new Map();
 const TTL_MS = 30_000;
 
 export async function getAccess(auth) {
-  const hit = cache.get(auth.userId);
+  const key = `${auth.userId}:${auth.sessionId}`;
+  const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.data;
 
   let res;
@@ -93,7 +97,7 @@ export async function getAccess(auth) {
   if (!res.ok) throw httpError(502, "Réponse inattendue de NEXIS Identity.");
 
   const data = await identityJson(res);
-  cache.set(auth.userId, { at: Date.now(), data });
+  cache.set(key, { at: Date.now(), data });
   return data;
 }
 
@@ -102,7 +106,7 @@ export async function getAccess(auth) {
 const membersCache = new Map();
 
 export async function listOrgMembers(auth, orgId) {
-  const key = `${auth.userId}:${orgId}`;
+  const key = `${auth.userId}:${auth.sessionId}:${orgId}`;
   const hit = membersCache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.data;
 
@@ -166,13 +170,13 @@ export async function lookupMemberEmail(orgId, userId) {
   return email;
 }
 
-/** Exige une permission dans l'organisation :orgId (admin plateforme = tout). */
+/** Exige une permission dans l'organisation :orgId, en tant que membre. */
 export const requirePermission = (permission) => async (req, _res, next) => {
   try {
     const { orgId } = req.params;
     if (!UUID_RE.test(orgId)) throw httpError(400, "Organisation invalide.");
+    // Pas d'exception pour l'admin plateforme : le module ne s'ouvre qu'aux membres de l'organisation.
     const access = await getAccess(req.auth);
-    if (access.platformAdmin) return next();
     const org = access.organizations?.find((o) => o.organizationId === orgId);
     if (!org?.permissions?.includes(permission)) throw httpError(403, "Accès refusé.");
     next();
@@ -181,9 +185,8 @@ export const requirePermission = (permission) => async (req, _res, next) => {
   }
 };
 
-/** Vrai si l'appelant a cette permission dans l'organisation (admin plateforme = oui). */
+/** Vrai si l'appelant a cette permission dans l'organisation (en tant que membre, admin plateforme compris). */
 export async function hasPermission(auth, orgId, permission) {
   const access = await getAccess(auth);
-  if (access.platformAdmin) return true;
   return !!access.organizations?.find((o) => o.organizationId === orgId)?.permissions?.includes(permission);
 }

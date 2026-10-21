@@ -1,7 +1,7 @@
 /* Modals de confirmation (remplacent window.confirm). */
-.cf-ov { position: fixed; inset: 0; z-index: 200; background: rgba(15,18,25,.55); backdrop-filter: blur(2px); display: grid; place-items: center; padding: 16px; animation: cf-f .15s ease-out; }
+.cf-ov { position: fixed; inset: 0; z-index: 200; background: rgba(17,17,17,.55); backdrop-filter: blur(2px); display: grid; place-items: center; padding: 16px; animation: cf-f .15s ease-out; }
 .cf { width: 100%; max-width: 440px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--card); color: var(--tx); border: 1px solid var(--bd); border-radius: 16px; box-shadow: 0 18px 50px rgba(0,0,0,.35); padding: 22px 22px 18px; animation: cf-l .2s ease-out; }
-.cf-danger { --c: var(--bad); } .cf-warn { --c: var(--warn); } .cf-info { --c: var(--pri); }
+.cf-danger { --c: var(--bad); } .cf-warn { --c: var(--warn); } .cf-info { --c: var(--pri-fill); }
 .cf-head { display: flex; gap: 14px; align-items: flex-start; }
 .cf-ic { flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
 .cf-ic svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }

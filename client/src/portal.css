@@ -6,7 +6,7 @@
 .pt-brandw { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
 .pt-logo { width: auto; height: 34px; object-fit: contain; flex: none; }
 .pt-brand { font: 700 19px Sora, "DM Sans", sans-serif; letter-spacing: -.01em; }
-.pt-right { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--bd); border-radius: 99px; padding: 4px; box-shadow: 0 6px 20px -12px rgba(10, 70, 80, .35); }
+.pt-right { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--bd); border-radius: 99px; padding: 4px; box-shadow: 0 6px 20px -12px rgba(0, 0, 0, .28); }
 .pt-ro { display: inline-flex; align-items: center; gap: 6px; padding-left: 12px; color: var(--mut); font-size: 14px; }
 .pt-me { width: 40px; height: 40px; border-radius: 50%; background: var(--sec); color: var(--on-sec); display: grid; place-items: center; font-size: 15px; font-weight: 600; flex: none; }
 

@@ -1,9 +1,9 @@
 /* Palette des couleurs d'étape (indices 0 à 7). */
-:root { --sc-0: #5c7480; --sc-1: #2468c8; --sc-2: #7b3f74; --sc-3: #a86400; --sc-4: #2f7f3f; --sc-5: #0b7482; --sc-6: #c43c6c; --sc-7: #c2410c; }
+:root { --sc-0: #71717a; --sc-1: #2468c8; --sc-2: #7b3f74; --sc-3: #a86400; --sc-4: #2f7f3f; --sc-5: #c40000; --sc-6: #c43c6c; --sc-7: #c2410c; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --sc-0: #7f9aa4; --sc-1: #6fb6ff; --sc-2: #d99ad0; --sc-3: #f2b24a; --sc-4: #6fd08a; --sc-5: #4cc9d6; --sc-6: #ff8fb1; --sc-7: #ff9b5e; }
+  :root:not([data-theme="light"]) { --sc-0: #a1a1aa; --sc-1: #6fb6ff; --sc-2: #d99ad0; --sc-3: #f2b24a; --sc-4: #6fd08a; --sc-5: #ff5a5a; --sc-6: #ff8fb1; --sc-7: #ff9b5e; }
 }
-:root[data-theme="dark"] { --sc-0: #7f9aa4; --sc-1: #6fb6ff; --sc-2: #d99ad0; --sc-3: #f2b24a; --sc-4: #6fd08a; --sc-5: #4cc9d6; --sc-6: #ff8fb1; --sc-7: #ff9b5e; }
+:root[data-theme="dark"] { --sc-0: #a1a1aa; --sc-1: #6fb6ff; --sc-2: #d99ad0; --sc-3: #f2b24a; --sc-4: #6fd08a; --sc-5: #ff5a5a; --sc-6: #ff8fb1; --sc-7: #ff9b5e; }
 .st-swatch { position: relative; display: inline-flex; }
 .st-swatch > button { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bd-s); padding: 0; cursor: pointer; }
 .st-pal { position: absolute; z-index: 20; top: 28px; left: 0; display: grid; grid-template-columns: repeat(4, 24px); gap: 6px; padding: 8px; border: 1px solid var(--bd); border-radius: 12px; background: var(--card); box-shadow: 0 8px 24px rgba(0,0,0,.25); }

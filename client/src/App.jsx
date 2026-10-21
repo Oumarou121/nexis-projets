@@ -13,6 +13,7 @@ import { watchNexisPrefs } from "./nexisPrefs.js";
 import Projects from "./ProjectsHome.jsx";
 import { PageSkeleton } from "./Skeleton.jsx";
 import logo from "./assets/logo.png";
+import logoDark from "./assets/logo-dark.png";
 import GlobalSearch from "./GlobalSearch.jsx";
 import NotificationBell from "./NotificationBell.jsx";
 import { PermsContext, featureOn } from "./perms.js";
@@ -153,7 +154,7 @@ export default function App() {
   // Nom de l'organisation (le slug ne sert que de repli) ; sans aucun nom, « nexis » comme NEXIS Documents.
   const orgName = orgLabel(orgAccess) || (orgId ? "nexis" : "");
   const orgLogo = orgAccess?.organizationLogoUrl || "";
-  const has = (p) => !!access?.platformAdmin || !!orgAccess?.permissions?.includes(p);
+  const has = (p) => !!orgAccess?.permissions?.includes(p);
   const perms = { canCreate: has("projects.create"), canEdit: has("projects.update"), canDelete: has("projects.delete") };
   const inProject = !!project;
   // Tant que NEXIS n'a pas répondu, la barre garde sa forme définitive (onglets, recherche, avatar
@@ -177,7 +178,7 @@ export default function App() {
   return (
     <PermsContext.Provider value={perms}>
       <header className="hd2">
-        <span className="hd2-brand"><img className="hd2-logo" src={logo} alt="" width="44" height="34" /><span className="hd2-bt"><small>NEXIS</small><b>Projets</b></span></span>
+        <span className="hd2-brand"><img className="hd2-logo lg-l" src={logo} alt="" width="44" height="32" /><img className="hd2-logo lg-d" src={logoDark} alt="" width="44" height="32" /><span className="hd2-bt"><small>NEXIS</small><b>Projets</b></span></span>
         {loading && (
           <div className="hd2-nav nav-ph" aria-hidden="true">
             {NAV_ITEMS.map(({ k }) => <button key={k} className="hd2-tab" tabIndex={-1}><span>{tr(`nav.${k}`)}</span></button>)}

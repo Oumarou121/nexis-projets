@@ -114,8 +114,9 @@ describe("permissions par rôle", () => {
     }
   });
 
-  test("administrateur plateforme : passe les droits (rejeté ensuite par la validation, pas par 403)", async () => {
-    assert.equal((await call("POST", projects(OTHER_ORG), { as: 4, body: { name: "x" } })).status, 400);
+  test("administrateur plateforme sans appartenance : refusé comme tout non-membre → 403", async () => {
+    assert.equal((await call("POST", projects(OTHER_ORG), { as: 4, body: { name: "Projet" } })).status, 403);
+    assert.equal((await call("GET", `/api/organizations/${ORG}/my-tasks`, { as: 4 })).status, 403);
   });
 });
 

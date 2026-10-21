@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1a20" />
+    <meta name="theme-color" content="#0b0b0b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="NEXIS" />
@@ -32,9 +32,9 @@
     </script>
     <style>
       /* Écran de démarrage : visible dès le premier octet, remplacé tel quel par React au rendu. */
-      html { background: #f3f6f7; --boot-tx: #53656f; }
-      html[data-theme="dark"] { background: #0b1a20; --boot-tx: #9db4bc; }
-      @media (prefers-color-scheme: dark) { html[data-theme="auto"] { background: #0b1a20; --boot-tx: #9db4bc; } }
+      html { background: #fafafa; --boot-tx: #52525b; }
+      html[data-theme="dark"] { background: #0b0b0b; --boot-tx: #a3a3a3; }
+      @media (prefers-color-scheme: dark) { html[data-theme="auto"] { background: #0b0b0b; --boot-tx: #a3a3a3; } }
       body { margin: 0; }
       .boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; margin: 0; font: 500 15px "DM Sans", system-ui, sans-serif; color: var(--boot-tx); }
       .boot svg { animation: boot-spin .9s linear infinite; }
