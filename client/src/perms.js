@@ -58,6 +58,15 @@ export function projectPerms(base, myRole) {
   };
 }
 
+// Rôle qu'une personne tient de son organisation (son rôle NEXIS Identity), comme server/src/access.js :
+// administrateur ou propriétaire → responsable de tous les projets ; manager ou utilisateur → contributeur ;
+// lecture seule (ou rôle inconnu) → observateur. Son rôle effectif dans un projet est le plus élevé des deux.
+const ORG_ROLE_BASE = { super_admin: "manager", owner: "manager", organization_admin: "manager", manager: "contributor", user: "contributor", viewer: "viewer" };
+export const orgBaseOf = (identityRole) => (identityRole == null ? "contributor" : ORG_ROLE_BASE[identityRole] ?? "viewer");
+const RANK = { viewer: 0, contributor: 1, manager: 2 };
+export const roleRank = (r) => RANK[r] ?? 0;
+export const higherRole = (a, b) => (roleRank(a) >= roleRank(b) ? a : b);
+
 export const ROLE_LABELS = { manager: "Responsable", contributor: "Contributeur", viewer: "Observateur" };
 export const ROLE_HINTS = {
   manager: "Gère le projet : paramètres, membres, étapes et toutes les tâches.",

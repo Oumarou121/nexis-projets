@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { ROLE_HINTS, ROLE_LABELS, usePerms } from "./perms.js";
+import { ROLE_HINTS, ROLE_LABELS, orgBaseOf, roleRank, usePerms } from "./perms.js";
 import { Avatar, Icon } from "./ui.jsx";
 import { memberName } from "./labels.js";
 import "./members.css";
@@ -43,6 +43,15 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
   const label = (id) => (person(id) ? memberName(person(id)) : "Utilisateur");
   const memberIds = useMemo(() => new Set((data?.members ?? []).map((m) => m.userId)), [data]);
   const candidates = people.filter((m) => !memberIds.has(m.userId));
+  // Rôle tenu de l'organisation (null si la personne n'est pas dans l'annuaire) : un rôle de projet plus bas est sans effet.
+  const baseOf = (id) => (person(id) ? orgBaseOf(person(id).role) : null);
+  const isOrgAdmin = (id) => baseOf(id) === "manager";
+  const pickBase = pick ? baseOf(pick) : null;
+  const roleOption = (r, base) => (
+    <option key={r} value={r} disabled={!!base && roleRank(r) < roleRank(base)}>
+      {ROLE_LABELS[r]}{base && roleRank(r) < roleRank(base) ? ` (déjà ${ROLE_LABELS[base].toLowerCase()} par l’organisation)` : ""}
+    </option>
+  );
 
   async function add(userId) {
     if (!userId) return;
@@ -148,6 +157,12 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
           )}{" "}
           Un membre garde toujours le plus élevé de ses deux rôles : celui de l'organisation et celui du projet.
         </p>
+        {data && isOrgAdmin(data.me) && (
+          <p className="pm-note pm-admin">
+            Vous êtes <b>administrateur de l'organisation</b> : vous gérez ce projet (membres, tâches, paramètres) même sans y être responsable,
+            et un rôle plus bas dans le projet ne change rien. Les responsables nommés restent ceux qui le pilotent au quotidien.
+          </p>
+        )}
         {!data && !err && <p className="muted small">Chargement…</p>}
         {data && rows.length === 0 && (
           <div className="set-empty"><strong>Aucun membre</strong><span>{isPrivate ? "Seuls les administrateurs voient ce projet." : "Personne n'a de rôle particulier dans ce projet."}</span></div>
@@ -160,9 +175,12 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
                 <strong>{label(m.userId)}{m.userId === data.me && <span className="pm-you">Vous</span>}</strong>
                 <small>{person(m.userId)?.email ? `${person(m.userId).email} · ` : ""}ajouté le {when(m.createdAt)}</small>
               </span>
-              {canManage ? (
+              {isOrgAdmin(m.userId) ? (
+                // Responsable de tous les projets par son rôle d'organisation : un rôle de projet ne changerait rien.
+                <span className="pm-tag" title="Administrateur de l’organisation : responsable de tous les projets, quel que soit son rôle ici.">Administrateur · responsable partout</span>
+              ) : canManage ? (
                 <select aria-label={`Rôle de ${label(m.userId)} dans le projet`} value={m.role ?? "contributor"} disabled={busy} title={ROLE_HINTS[m.role ?? "contributor"]} onChange={(e) => changeRole(m, e.target.value)}>
-                  {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                  {ROLES.map((r) => roleOption(r, baseOf(m.userId)))}
                 </select>
               ) : (
                 <span className="muted small" title={ROLE_HINTS[m.role ?? "contributor"]}>{ROLE_LABELS[m.role ?? "contributor"]}</span>
@@ -178,13 +196,22 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
 
         {canManage && (canList ? (
           <div className="pm-add">
-            <select aria-label="Ajouter un membre" value={pick} disabled={busy || candidates.length === 0} onChange={(e) => setPick(e.target.value)}>
+            <select aria-label="Ajouter un membre" value={pick} disabled={busy || candidates.length === 0} onChange={(e) => {
+              const id = e.target.value;
+              setPick(id);
+              const base = id ? baseOf(id) : null;
+              if (base && base !== "manager" && roleRank(pickRole) < roleRank(base)) setPickRole(base);
+            }}>
               <option value="">{candidates.length === 0 ? "Tous les utilisateurs sont déjà membres" : "Choisir une personne…"}</option>
-              {candidates.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+              {candidates.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}{orgBaseOf(m.role) === "manager" ? " (administrateur)" : ""}</option>)}
             </select>
-            <select aria-label="Rôle dans le projet" value={pickRole} disabled={busy} title={ROLE_HINTS[pickRole]} onChange={(e) => setPickRole(e.target.value)}>
-              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-            </select>
+            {pickBase === "manager" ? (
+              <span className="pm-tag">Responsable partout</span>
+            ) : (
+              <select aria-label="Rôle dans le projet" value={pickRole} disabled={busy} title={ROLE_HINTS[pickRole]} onChange={(e) => setPickRole(e.target.value)}>
+                {ROLES.map((r) => roleOption(r, pickBase))}
+              </select>
+            )}
             <button type="button" disabled={busy || !pick} onClick={() => add(pick)}>Ajouter</button>
           </div>
         ) : (

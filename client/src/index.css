@@ -938,6 +938,15 @@ h1, h2 { font-family: Sora, "DM Sans", system-ui, sans-serif; }
 .pj-f { display: grid; gap: 7px; border: 0; padding: 0; margin: 0; min-width: 0; }
 .pj-f label, .pj-f legend { font-size: 13.5px; font-weight: 600; padding: 0; }
 .pj-f label span { font-weight: 400; color: var(--mut); }
+/* « Plus d’options » du formulaire de création : replié par défaut, le formulaire reste court. */
+.pj-opts { border: 1px solid var(--bd); border-radius: 14px; padding: 0 16px; }
+.pj-opts[open] { padding-bottom: 16px; }
+.pj-opts > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 12px 0; font-size: 13.5px; font-weight: 600; }
+.pj-opts > summary::-webkit-details-marker { display: none; }
+.pj-opts > summary::before { content: "▸"; color: var(--mut); transition: transform .15s; }
+.pj-opts[open] > summary::before { transform: rotate(90deg); }
+.pj-opts > summary span { font-weight: 400; color: var(--mut); font-size: 12.5px; }
+.pj-opts > :not(summary) + :not(summary) { margin-top: 18px; }
 .pj-md input[type="text"], .pj-md input[type="date"], .pj-md select, .pj-md textarea { font: 500 15px "DM Sans", sans-serif; color: var(--tx); background: var(--bg); border: 1px solid var(--bd-s); border-radius: 14px; padding: 12px 14px; min-height: 46px; width: 100%; }
 .pj-md textarea { min-height: 92px; resize: none; }
 .pj-md input:focus, .pj-md select:focus, .pj-md textarea:focus { border-color: var(--pri); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 22%, transparent); }
