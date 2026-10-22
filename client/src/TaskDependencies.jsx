@@ -7,8 +7,10 @@ import { taskColor, isLate, stageLabel, shortDate } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 
 /** Tâches qui doivent être terminées avant celle-ci. */
-export default function TaskDependencies({ orgId, projectId, taskId, onBusy }) {
-  const { canEdit } = usePerms();
+// editable : droit de modifier CETTE tâche (ses dépendances en font partie).
+export default function TaskDependencies({ orgId, projectId, taskId, onBusy, editable }) {
+  const perms = usePerms();
+  const canEdit = editable ?? perms.canEdit;
   const [dependencies, setDependencies] = useState(null);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -1,5 +1,6 @@
-// Remet les données du module Projets à zéro : projets, tâches, commentaires, pièces jointes (table ET fichiers),
-// notifications, jetons push, préférences, journal du résumé quotidien. Le schéma est conservé.
+// Remet les données du module Projets à zéro : projets, étapes, tâches, commentaires, pièces jointes (table ET fichiers),
+// notifications, jetons push, préférences, journal du résumé quotidien, étapes par défaut des organisations.
+// Le schéma est conservé.
 //
 // Usage (depuis server/) :
 //   node --env-file=.env scripts/reset-data.mjs --dry-run
@@ -39,7 +40,9 @@ const TABLES = [
   ["project_guests", "id"],
   ["project_members", "project_id"],
   ["tasks", "id"],
+  ["project_stages", "id"],
   ["projects", "id"],
+  ["organization_stage_templates", "id"], // étapes par défaut de chaque organisation Identity
 ];
 const BUCKET = "task-attachments";
 

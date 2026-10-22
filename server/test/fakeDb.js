@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 
 const TABLES = [
   "projects", "tasks", "project_members", "activity_log", "task_comments", "task_attachments",
-  "task_activities", "task_timesheets", "task_dependencies", "task_status_history", "project_stages", "organization_stage_templates", "notifications", "notification_prefs", "project_guests", "digest_log", "push_tokens",
+  "task_activities", "task_timesheets", "task_dependencies", "task_status_history", "project_stages", "organization_stage_templates", "notifications", "notification_prefs", "project_guests", "digest_log", "push_tokens", "task_reassign_requests",
 ];
 
 // Valeurs par défaut posées à l'insertion (comme les « default » SQL).
@@ -13,8 +13,11 @@ const DEFAULTS = {
   projects: () => ({ status: "planned", priority: "medium", visibility: "internal", settings: { timesheets: false }, color: null, due_date: null, description: null }),
   tasks: () => ({ status: "todo", priority: "medium", assignee_id: null, due_date: null, start_date: null, labels: [], parent_id: null, is_milestone: false, description: null }),
   activity_log: () => ({ restricted: false, details: {} }),
+  task_reassign_requests: () => ({ status: "pending", suggested_user_id: null, decided_by: null, decided_at: null, decision_note: null, new_assignee_id: null }),
 };
-const PRIMARY_KEYS = { project_members: ["project_id", "user_id"], notification_prefs: ["user_id"], digest_log: ["user_id", "organization_id", "day"], push_tokens: ["token"] };
+const PRIMARY_KEYS = { project_members: ["project_id", "user_id"], task_dependencies: ["task_id", "depends_on_id"], notification_prefs: ["user_id"], digest_log: ["user_id", "organization_id", "day"], push_tokens: ["token"] };
+// Index uniques partiels (« create unique index … where … »).
+const PARTIAL_UNIQUE = { task_reassign_requests: { cols: ["task_id"], where: (r) => r.status === "pending" } };
 // Clés étrangères (enfant → parent) : sert aux embeds et aux suppressions en cascade.
 const FK = {
   tasks: { projects: "project_id" },
@@ -26,9 +29,12 @@ const FK = {
   task_timesheets: { tasks: "task_id" },
   task_dependencies: { tasks: "task_id" },
   task_status_history: { tasks: "task_id" },
+  task_reassign_requests: { tasks: "task_id" },
   notifications: { projects: "project_id", tasks: "task_id" },
   project_guests: { projects: "project_id" },
 };
+
+export const MAX_ROWS = 1000;
 
 export function createFakeDb() {
   const store = Object.fromEntries(TABLES.map((t) => [t, []]));
@@ -94,6 +100,7 @@ export function createFakeDb() {
     }
     order(col, { ascending = true } = {}) { this.sorts.push({ col, ascending }); return this; }
     limit(n) { this.max = n; return this; }
+    range(from, to) { this.offset = from; this.max = to - from + 1; return this; }
     single() { this.mode = "single"; return this; }
     maybeSingle() { this.mode = "maybe"; return this; }
 
@@ -164,7 +171,9 @@ export function createFakeDb() {
           return (x < y ? -1 : 1) * (ascending ? 1 : -1);
         });
       }
-      if (this.max !== null) list = list.slice(0, this.max);
+      // Comme PostgREST : jamais plus de MAX_ROWS lignes par réponse, même sans limite demandée.
+      const offset = this.offset ?? 0;
+      list = list.slice(offset, offset + Math.min(this.max ?? MAX_ROWS, MAX_ROWS));
       list = list.map((r) => this.shape(r));
       if (this.mode === "single") {
         if (list.length !== 1) return { data: null, error: { code: "PGRST116", message: "Aucune ligne ou plusieurs" } };
@@ -198,6 +207,10 @@ export function createFakeDb() {
         const pk = PRIMARY_KEYS[t];
         for (const it of items) {
           if (pk && store[t].some((r) => pk.every((k) => r[k] === it[k]))) {
+            return { data: null, error: { code: "23505", message: "doublon" } };
+          }
+          const pu = PARTIAL_UNIQUE[t];
+          if (pu?.where(it) && store[t].some((r) => pu.where(r) && pu.cols.every((k) => r[k] === it[k]))) {
             return { data: null, error: { code: "23505", message: "doublon" } };
           }
         }

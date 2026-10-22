@@ -34,7 +34,8 @@ function arrowPath(a, b) {
  * (une ligne par tâche, barre de la création à l'échéance) et une ligne de total par jour.
  * Les tâches sans échéance sont comptées sous le tableau.
  */
-export default function Gantt({ tasks, dependencies = [], members, onChange, onOpen, onSidebar }) {
+// canEditTask : droit de déplacer les dates de chaque tâche (un contributeur ne touche qu'à ses tâches).
+export default function Gantt({ tasks, dependencies = [], members, onChange, onOpen, onSidebar, canEditTask = () => true }) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [closed, setClosed] = useState(() => new Set());
   const gridRef = useRef(null);
@@ -218,11 +219,11 @@ export default function Gantt({ tasks, dependencies = [], members, onChange, onO
                       onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onOpen(task); } }}
                       onContextMenu={(ev) => { if (onSidebar) { ev.preventDefault(); onSidebar(task); } }}
                     >
-                      {onChange && !cutL && (
+                      {onChange && canEditTask(task) && !cutL && (
                         <span className="pl-h l" aria-label={`Début de ${task.title}`} onPointerDown={(ev) => startResize(ev, row, "l")} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={cancelResize} onClick={(ev) => ev.stopPropagation()} />
                       )}
                       <span className="pl-bt">{d ? range : task.title}</span>
-                      {onChange && !cutR && (
+                      {onChange && canEditTask(task) && !cutR && (
                         <span className="pl-h r" aria-label={`Échéance de ${task.title}`} onPointerDown={(ev) => startResize(ev, row, "r")} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={cancelResize} onClick={(ev) => ev.stopPropagation()} />
                       )}
                     </div>

@@ -1,8 +1,8 @@
 import { notify } from "../notifications.js";
 import { Router } from "express";
 import { db } from "../db.js";
-import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
-import { DATE_RE, PRIORITIES, assertProject, clip, unwrap } from "../util.js";
+import { UUID_RE, httpError, requirePermission } from "../auth.js";
+import { DATE_RE, PRIORITIES, assertProject, clip, selectAll, selectIn, unwrap } from "../util.js";
 import comments from "./comments.js";
 import attachments from "./attachments.js";
 import activities from "./activities.js";
@@ -13,10 +13,15 @@ import { pathsForTasks, removeFiles } from "../storage.js";
 import { changedFields, logActivity } from "../activity.js";
 import { recordStatus } from "../history.js";
 import { projectStages, resolveStage, stageInput } from "../stages.js";
+import { assertAssignee, assertCanEditTask, isManager, ownsTask, requireRole } from "../access.js";
+import reassign, { closePendingRequest } from "./reassign.js";
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/tasks.
-// Droits : lecture = projects.read ; créer / modifier / supprimer = projects.update.
-// Affecter quelqu'un exige en plus de pouvoir lister les membres dans NEXIS Identity.
+// Droits : lecture = projects.read ; créer = projects.update.
+// Modifier : gestionnaire (projects.manage), ou contributeur sur SES tâches (voir access.js).
+// Assigner : un contributeur ne s'assigne qu'à lui-même (et peut prendre une tâche libre) ; répartir le
+// travail entre les personnes est réservé aux gestionnaires. Supprimer : gestionnaire ou créateur.
+// Affecter quelqu'un d'autre exige en plus de pouvoir lister les membres dans NEXIS Identity.
 const COLS = "id, project_id, title, description, status, stage_id, priority, assignee_id, start_date, due_date, labels, parent_id, is_milestone, created_by, created_at, updated_at";
 
 // `stages` : Map id → étape du projet (nom affiché). status = catégorie de l'étape (todo / in_progress / done).
@@ -101,22 +106,6 @@ function parse(body, { partial }) {
   return out;
 }
 
-/** Un assigné doit être membre actif de l'organisation, et du projet s'il est privé (null = désaffecter). */
-async function assertAssignee(req, assigneeId) {
-  if (!assigneeId) return;
-  const members = await listOrgMembers(req.auth, req.params.orgId);
-  if (!members.some((m) => m.userId === assigneeId)) {
-    throw httpError(400, "Ce membre n’appartient pas à l’organisation.");
-  }
-  // Dans un projet privé, l'assigné doit pouvoir le voir : sinon il aurait une tâche qu'il ne peut pas ouvrir.
-  if (req.project?.visibility === "private") {
-    const row = unwrap(
-      await db.from("project_members").select("user_id").eq("project_id", req.params.projectId).eq("user_id", assigneeId).maybeSingle(),
-    );
-    if (!row) throw httpError(400, "Cette personne n’a pas accès à ce projet privé : ajoutez-la d’abord aux membres du projet.");
-  }
-}
-
 /** Prévient la personne à qui la tâche vient d'être assignée (jamais celle qui l'assigne). */
 const notifyAssigned = (req, row) =>
   notify({
@@ -131,11 +120,12 @@ router.use("/:taskId/activities", activities);
 router.use("/:taskId/timesheets", timesheets);
 router.use("/:taskId/dependencies", dependencies);
 router.use("/:taskId/status-history", statusHistory);
+router.use("/:taskId/reassign-requests", reassign);
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
   await assertProject(req.params);
-  const rows = unwrap(
-    await db.from("tasks").select(COLS).eq("project_id", req.params.projectId).order("created_at", { ascending: true }),
+  const rows = await selectAll(() =>
+    db.from("tasks").select(COLS).eq("project_id", req.params.projectId).order("created_at", { ascending: true }).order("id", { ascending: true }),
   );
   const stages = new Map((await projectStages(req.params.projectId, req.params.orgId)).map((st) => [st.id, st]));
 
@@ -143,34 +133,55 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   // d'afficher les tâches : on le signale dans le terminal et les compteurs restent à 0.
   const counts = new Map();
   const fileCounts = new Map();
+  const asked = new Map(); // tâche -> demande de réassignation en attente
+  const tally = async (table, into, label) => {
+    try {
+      const found = await selectIn((ids) => db.from(table).select("id, task_id").in("task_id", ids).order("id", { ascending: true }), rows.map((r) => r.id));
+      for (const c of found) into.set(c.task_id, (into.get(c.task_id) ?? 0) + 1);
+    } catch (e) {
+      console.warn(`[${label}] compteurs indisponibles :`, e.message);
+    }
+  };
   if (rows.length > 0) {
-    const ids = rows.map((r) => r.id);
-    const { data, error } = await db.from("task_comments").select("task_id").in("task_id", ids);
-    if (error) console.warn("[comments] compteurs indisponibles :", error.message);
-    for (const c of data ?? []) counts.set(c.task_id, (counts.get(c.task_id) ?? 0) + 1);
+    await tally("task_comments", counts, "comments");
     // Idem pour les pièces jointes : sans leur migration, les tâches s'affichent quand même.
-    const files = await db.from("task_attachments").select("task_id").in("task_id", ids);
-    if (files.error) console.warn("[attachments] compteurs indisponibles :", files.error.message);
-    for (const c of files.data ?? []) fileCounts.set(c.task_id, (fileCounts.get(c.task_id) ?? 0) + 1);
+    await tally("task_attachments", fileCounts, "attachments");
+    // Sans la migration des demandes, la requête échoue sans bruit : aucune demande affichée.
+    const { data: pending } = await db.from("task_reassign_requests").select("task_id, requested_by").eq("project_id", req.params.projectId).eq("status", "pending");
+    for (const p of pending ?? []) asked.set(p.task_id, p.requested_by);
   }
-  res.json(rows.map((r) => ({ ...toApi(r, stages), commentCount: counts.get(r.id) ?? 0, attachmentCount: fileCounts.get(r.id) ?? 0 })));
+  res.json(rows.map((r) => ({
+    ...toApi(r, stages),
+    commentCount: counts.get(r.id) ?? 0,
+    attachmentCount: fileCounts.get(r.id) ?? 0,
+    reassignRequestedBy: asked.get(r.id) ?? null,
+  })));
 });
 
-router.post("/", requirePermission("projects.update"), async (req, res) => {
+router.post("/", requireRole("contributor"), async (req, res) => {
   const f = parse(req.body, { partial: false });
   const project = await assertProject(req.params);
+  const manager = await isManager(req);
+  if (!manager && f.assignee_id && f.assignee_id !== req.auth.userId) {
+    throw httpError(403, "Vous ne pouvez assigner une tâche qu’à vous-même : un gestionnaire répartit le travail.");
+  }
   await assertAssignee(req, f.assignee_id);
-  // Étape de départ : celle demandée (stageId, ou 1re étape d'une catégorie), sinon la première du projet.
+  // Étape de départ : celle demandée (stageId, ou 1re étape d'une catégorie), sinon la 1re étape « À faire »
+  // (jamais une étape terminée, même si l'ordre des étapes a été changé).
   const stageList = await projectStages(req.params.projectId, req.params.orgId);
   const stageIn = stageInput(req.body);
-  const stage = stageIn.stageId || stageIn.status ? resolveStage(stageList, stageIn) : stageList[0];
+  const stage = stageIn.stageId || stageIn.status ? resolveStage(stageList, stageIn) : resolveStage(stageList, { status: "todo" });
   const stages = new Map(stageList.map((st) => [st.id, st]));
   if (f.parent_id) {
     const parent = unwrap(
-      await db.from("tasks").select("id, parent_id").eq("id", f.parent_id).eq("project_id", req.params.projectId).maybeSingle(),
+      await db.from("tasks").select("id, parent_id, created_by, assignee_id").eq("id", f.parent_id).eq("project_id", req.params.projectId).maybeSingle(),
     );
     if (!parent) throw httpError(400, "Tâche parente introuvable dans ce projet.");
     if (parent.parent_id) throw httpError(400, "Une sous-tâche ne peut pas avoir de sous-tâche.");
+    // Ajouter une sous-tâche, c'est modifier la tâche parente : mêmes droits que pour la modifier.
+    if (!manager && !(await ownsTask(req, parent))) {
+      throw httpError(403, "Vous ne pouvez ajouter des sous-tâches qu’à vos tâches.");
+    }
   }
   const row = unwrap(
     await db
@@ -193,13 +204,32 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
   res.status(201).json(toApi(row, stages));
 });
 
-router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
+router.patch("/:id", requireRole("contributor"), async (req, res) => {
   const f = parse(req.body, { partial: true });
   const stageIn = stageInput(req.body);
   const wantsStage = !!(stageIn.stageId || stageIn.status);
   if (Object.keys(f).length === 0 && !wantsStage) throw httpError(400, "Aucune modification.");
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Tâche introuvable.");
   const project = await assertProject(req.params);
+  // État actuel : droits, dates et historique se décident par rapport à lui.
+  const previous = unwrap(
+    await db.from("tasks").select("id, created_by, assignee_id, parent_id, stage_id, start_date, due_date").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle(),
+  );
+  if (!previous) throw httpError(404, "Tâche introuvable.");
+  const me = req.auth.userId;
+  if (!(await isManager(req))) {
+    const onlyAssignee = !wantsStage && Object.keys(f).length === 1 && f.assignee_id !== undefined;
+    // Prendre une tâche libre : seul cas où un contributeur touche une tâche qui n'est pas la sienne.
+    const takesFreeTask = onlyAssignee && f.assignee_id === me && !previous.assignee_id;
+    if (!takesFreeTask) await assertCanEditTask(req, previous);
+    // Réassigner : seulement entre « personne » et soi-même ; répartir le travail revient aux gestionnaires.
+    if (f.assignee_id !== undefined && f.assignee_id !== previous.assignee_id) {
+      const mineOrFree = (id) => !id || id === me;
+      if (!mineOrFree(f.assignee_id) || !mineOrFree(previous.assignee_id)) {
+        throw httpError(403, "Seul un gestionnaire peut confier une tâche à quelqu’un d’autre.");
+      }
+    }
+  }
   const stageList = await projectStages(req.params.projectId, req.params.orgId);
   const stages = new Map(stageList.map((st) => [st.id, st]));
   const stage = wantsStage ? resolveStage(stageList, stageIn) : null; // « status » seul = 1re étape de cette catégorie
@@ -207,14 +237,10 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   await assertAssignee(req, f.assignee_id);
   if (f.start_date !== undefined || f.due_date !== undefined) {
     // Une seule des deux dates change : on compare avec celle déjà enregistrée.
-    const cur = unwrap(await db.from("tasks").select("start_date, due_date").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle());
-    const start = f.start_date !== undefined ? f.start_date : cur?.start_date;
-    const due = f.due_date !== undefined ? f.due_date : cur?.due_date;
+    const start = f.start_date !== undefined ? f.start_date : previous.start_date;
+    const due = f.due_date !== undefined ? f.due_date : previous.due_date;
     if (start && due && start > due) throw httpError(400, "La date de début doit précéder l'échéance.");
   }
-  const previous = f.stage_id || f.assignee_id !== undefined
-    ? unwrap(await db.from("tasks").select("stage_id, assignee_id").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle())
-    : null;
   const row = unwrap(
     await db
       .from("tasks")
@@ -225,8 +251,12 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
       .maybeSingle(),
   );
   if (!row) throw httpError(404, "Tâche introuvable.");
-  if (f.assignee_id !== undefined && row.assignee_id && previous?.assignee_id !== row.assignee_id) await notifyAssigned(req, row);
-  if (f.stage_id && previous && previous.stage_id !== row.stage_id) {
+  if (f.assignee_id !== undefined && previous.assignee_id !== row.assignee_id) {
+    if (row.assignee_id) await notifyAssigned(req, row);
+    // Réassignée directement : une demande en attente n'a plus d'objet.
+    await closePendingRequest(req, row);
+  }
+  if (f.stage_id && previous.stage_id !== row.stage_id) {
     await recordStatus({ taskId: row.id, stageId: row.stage_id, status: row.status, actorId: req.auth.userId });
   }
   await logActivity({
@@ -237,9 +267,15 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   res.json(toApi(row, stages));
 });
 
-router.delete("/:id", requirePermission("projects.update"), async (req, res) => {
+router.delete("/:id", requireRole("contributor"), async (req, res) => {
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Tâche introuvable.");
   const project = await assertProject(req.params);
+  const task = unwrap(await db.from("tasks").select("id, created_by").eq("id", req.params.id).eq("project_id", req.params.projectId).maybeSingle());
+  if (!task) throw httpError(404, "Tâche introuvable.");
+  // Supprimer efface aussi le travail des autres (sous-tâches, temps, fichiers) : gestionnaire ou créateur.
+  if (task.created_by !== req.auth.userId && !(await isManager(req))) {
+    throw httpError(403, "Seul le créateur de la tâche ou un gestionnaire peut la supprimer.");
+  }
   // Fichiers de la tâche et de ses sous-tâches : à lister avant la suppression (la cascade efface les lignes).
   const subs = unwrap(await db.from("tasks").select("id").eq("parent_id", req.params.id).eq("project_id", req.params.projectId));
   const paths = await pathsForTasks([req.params.id, ...subs.map((t) => t.id)]);

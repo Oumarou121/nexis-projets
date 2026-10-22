@@ -46,7 +46,8 @@ before(async () => {
     seed: (s) => {
       const project = (id, name, visibility) => ({ id, organization_id: ORG, name, visibility, status: "active", priority: "medium", created_by: uid(AUTHOR) });
       s.projects.push(project(P_INT, "Ouvert", "internal"), project(P_PRIV, "Secret", "private"));
-      for (const u of [AUTHOR, MEMBER]) s.project_members.push({ project_id: P_PRIV, user_id: uid(u), added_by: uid(AUTHOR) });
+      for (const u of [AUTHOR, MEMBER]) s.project_members.push({ project_id: P_PRIV, user_id: uid(u), added_by: uid(AUTHOR), role: "manager" });
+      for (const u of [AUTHOR, MEMBER]) s.project_members.push({ project_id: P_INT, user_id: uid(u), added_by: uid(AUTHOR), role: "manager" });
       const task = (id, project_id, title) => ({ id, project_id, title, assignee_id: null, status: "todo", priority: "medium", labels: [], created_by: uid(AUTHOR) });
       s.tasks.push(task(T_INT, P_INT, "Tâche ouverte"), task(T_PRIV, P_PRIV, "Plan secret"));
     },

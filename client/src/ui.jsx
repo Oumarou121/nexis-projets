@@ -116,9 +116,11 @@ export function Menu({ trigger, items, label, align = "right", className = "" })
 }
 
 /* ---------- Statut : pastille cliquable avec menu (remplace le <select>) ---------- */
-export function StatusPill({ status, stageId, stages, label, color, onChange, compact = false, busy = false }) {
+// editable : droit sur CETTE tâche (canEditTask) ; par défaut, le droit général de contribuer.
+export function StatusPill({ status, stageId, stages, label, color, onChange, compact = false, busy = false, editable }) {
   const { open, setOpen, ref } = usePopover();
-  const { canEdit } = usePerms();
+  const perms = usePerms();
+  const canEdit = editable ?? perms.canEdit;
   // Étapes du projet quand on les connaît ; sinon les 3 catégories (ex. « Mes tâches », multi-projets :
   // `label` affiche alors le nom de l'étape actuelle, et choisir une catégorie vise sa première étape).
   const byStage = !!stages?.length;
@@ -151,8 +153,9 @@ export function StatusPill({ status, stageId, stages, label, color, onChange, co
 }
 
 /* ---------- Priorité : étoile à la Odoo (haute/urgente = remplie) ---------- */
-export function PriorityStar({ priority, onChange, busy = false }) {
-  const { canEdit } = usePerms();
+export function PriorityStar({ priority, onChange, busy = false, editable }) {
+  const perms = usePerms();
+  const canEdit = editable ?? perms.canEdit;
   const hot = priority === "high" || priority === "urgent";
   return (
     <button
@@ -187,8 +190,9 @@ export function StatusBar({ tasks }) {
 }
 
 /* ---------- Date : texte court lisible, sélecteur natif en surimpression invisible ---------- */
-export function DateField({ value, onChange, label, late = false, placeholder = "Définir", busy = false }) {
-  const { canEdit } = usePerms();
+export function DateField({ value, onChange, label, late = false, placeholder = "Définir", busy = false, editable }) {
+  const perms = usePerms();
+  const canEdit = editable ?? perms.canEdit;
   return (
     <span className={`datef ${value ? "" : "empty"} ${late ? "late" : ""}`} aria-busy={busy || undefined}>
       {busy ? <Spin size={14} className="ib" /> : <Icon name="calendar" size={14} />}

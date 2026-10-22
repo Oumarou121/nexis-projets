@@ -34,7 +34,7 @@ const parseLabels = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 /** Tâches d'un projet. `members` vient de NEXIS Identity ; `canAssign` = droit de les lister. */
 export default function Tasks({ orgId, project: initial, members, canAssign, reason = null, onReloadPeople, ready = true, command, openTaskId = null, onProjectChange, onBack, onNav }) {
   const [project, setProject] = useState(initial);
-  const { canEdit } = usePerms();
+  const { canEdit, canManage, canEditTask, canDeleteTask, canAssignTo, userId } = usePerms();
   const depsOn = featureOn(project, "dependencies");
   const msOn = featureOn(project, "milestones");
   // Remonte les changements du projet (paramètres, nom…) : le menu Configuration en dépend.
@@ -83,7 +83,12 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     return () => { alive = false; };
   }, [isPrivate, orgId, project.id]);
   const memberSet = useMemo(() => (memberIds ? new Set(memberIds) : null), [memberIds]);
-  const assignable = (currentId) => (isPrivate && memberSet ? members.filter((m) => memberSet.has(m.userId) || m.userId === currentId) : members);
+  // Un contributeur ne s'assigne qu'à lui-même : on ne lui propose que lui (et l'assigné actuel, pour l'afficher).
+  // Qui peut recevoir une tâche (projet privé : ses membres) ; et parmi eux, à qui l'appelant peut l'assigner.
+  const reachable = (currentId) => (isPrivate && memberSet ? members.filter((m) => memberSet.has(m.userId) || m.userId === currentId) : members);
+  const assignable = (currentId) =>
+    reachable(currentId)
+      .filter((m) => canManage || canAssignTo(m.userId) || m.userId === currentId);
 
   // Étapes (statuts) du projet : colonnes du Kanban, menus de statut, barre de la fiche tâche.
   const [stages, setStages] = useState([]);
@@ -164,7 +169,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
   async function changeNow(task, changes) {
     try {
       const updated = await api(`${base}/${task.id}`, "PATCH", changes);
-      setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...updated } : t)));
+      // Réassignée directement : le serveur clôt la demande de réassignation en attente.
+      const closed = updated.assigneeId !== task.assigneeId ? { reassignRequestedBy: null } : {};
+      setList((l) => l.map((t) => (t.id === task.id ? { ...t, ...updated, ...closed } : t)));
       setErr("");
       return null;
     } catch (e) {
@@ -207,6 +214,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     [],
   );
   const top = useMemo(() => list.filter((t) => !t.parentId), [list]);
+  // Avancement du projet : tâches principales hors jalons (même règle que la page Projets et le serveur).
+  const work = useMemo(() => top.filter((t) => !t.isMilestone), [top]);
+  const workDone = work.filter((t) => t.status === "done").length;
   const subsOf = useMemo(() => {
     const m = new Map();
     for (const t of list) if (t.parentId) m.set(t.parentId, [...(m.get(t.parentId) ?? []), t]);
@@ -242,8 +252,39 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     }
   }
 
+  // Terminer une tâche dont des sous-tâches ou des tâches bloquantes sont encore ouvertes : on prévient, on ne bloque
+  // pas (la personne sait parfois mieux, ex. sous-tâche devenue inutile). false = annulé.
+  async function confirmFinish(task, target) {
+    const { stage } = stageTarget(target);
+    if ((stage?.category ?? target) !== "done" || task.status === "done") return true;
+    const openSubs = (subsOf.get(task.id) ?? []).filter((s) => s.status !== "done");
+    let openBlockers = [];
+    if (depsOn) {
+      try {
+        const ids = new Set((await api(`${base}/${task.id}/dependencies`)).map((d) => d.dependsOnId));
+        openBlockers = list.filter((t) => ids.has(t.id) && t.status !== "done");
+      } catch {
+        /* dépendances indisponibles : on ne prévient que pour les sous-tâches */
+      }
+    }
+    if (openSubs.length === 0 && openBlockers.length === 0) return true;
+    const n = (k, one, many) => `${k} ${k > 1 ? many : one}`;
+    return confirmDialog({
+      tone: "warn", icon: "alert", title: "Terminer cette tâche ?",
+      text: "Elle a encore du travail ouvert. Vous pouvez la terminer quand même.",
+      list: [
+        ...(openSubs.length ? [n(openSubs.length, "sous-tâche non terminée", "sous-tâches non terminées")] : []),
+        ...(openBlockers.length ? [n(openBlockers.length, "tâche bloquante non terminée", "tâches bloquantes non terminées")] : []),
+      ],
+      ok: "Terminer quand même",
+    });
+  }
+
   // Déplacement entre colonnes : affiché tout de suite, annulé si le serveur refuse.
-  const move = (task, target) => track(task.id, "stage", () => moveNow(task, target));
+  const move = async (task, target) => {
+    if (!(await confirmFinish(task, target))) return null;
+    return track(task.id, "stage", () => moveNow(task, target));
+  };
   async function moveNow(task, target) {
     const { stage, body } = stageTarget(target);
     if (stage ? task.stageId === stage.id : task.status === target) return;
@@ -291,11 +332,19 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     </span>
   );
 
-  const row = (t) => (
+  const byId = new Map(list.map((x) => [x.id, x]));
+  const parentOf = (t) => (t?.parentId ? byId.get(t.parentId) : null);
+  // Droits sur CETTE tâche (mêmes règles que le serveur) : modifier, et changer l'assigné.
+  const editableOf = (t) => canEditTask(t, parentOf(t));
+  const reassignableOf = (t) => canManage || (canEdit && (!t.assigneeId || t.assigneeId === userId) && (editableOf(t) || !t.assigneeId));
+
+  const row = (t) => {
+    const editable = editableOf(t);
+    return (
     <tr key={t.id}>
       <td>
         <div className="ttl">
-          <PriorityStar priority={t.priority} busy={busyOf(t, "priority")} onChange={(priority) => change(t, { priority })} />
+          <PriorityStar editable={editable} priority={t.priority} busy={busyOf(t, "priority")} onChange={(priority) => change(t, { priority })} />
           <button className="link" onClick={() => openDetail(t.id)}>
             <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
           </button>
@@ -309,8 +358,10 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         {canAssign ? (
           <div className="ass">
             <Avatar member={who(t.assigneeId)} size={24} />
-            <select aria-label="Assignée à" disabled={!canEdit || busyOf(t, "assigneeId")} aria-busy={busyOf(t, "assigneeId") || undefined} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
+            <select aria-label="Assignée à" disabled={!reassignableOf(t) || busyOf(t, "assigneeId")} aria-busy={busyOf(t, "assigneeId") || undefined} value={t.assigneeId ?? ""} onChange={(e) => change(t, { assigneeId: e.target.value || null })}>
               <option value="">Non assignée</option>
+              {/* Assigné absent de l'annuaire : il a quitté l'organisation ou est suspendu (à réattribuer). */}
+              {t.assigneeId && !members.some((m) => m.userId === t.assigneeId) && <option value={t.assigneeId}>Membre inactif</option>}
               {assignable(t.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
             </select>
             {busyOf(t, "assigneeId") && <Spin size={14} className="ib" />}
@@ -318,16 +369,17 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         ) : t.assigneeId ? <Avatar name="Assignée" size={24} /> : <span className="muted">—</span>}
       </td>
       <td>
-        <DateField label="Échéance" busy={busyOf(t, "dueDate")} value={t.dueDate} late={isLate(t)} placeholder="—" onChange={(dueDate) => change(t, { dueDate })} />
+        <DateField editable={editable} label="Échéance" busy={busyOf(t, "dueDate")} value={t.dueDate} late={isLate(t)} placeholder="—" onChange={(dueDate) => change(t, { dueDate })} />
       </td>
       <td><Progress value={progressOf(t)} /></td>
-      <td><StatusPill busy={busyOf(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => move(t, s)} /></td>
+      <td><StatusPill editable={editable} busy={busyOf(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => move(t, s)} /></td>
       <td className="acts">
         <button className="icon-btn" onClick={() => setSidebarTask(t)} aria-label={`Aperçu rapide ${t.title}`} title="Aperçu rapide"><Icon name="expand" /></button>
-        {canEdit && <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>}
+        {canDeleteTask(t) && <button className="icon-btn" onClick={() => remove(t)} aria-label={`Supprimer ${t.title}`} title="Supprimer"><Icon name="trash" /></button>}
       </td>
     </tr>
-  );
+    );
+  };
 
   if (openTask) {
     const at = shown.findIndex((t) => t.id === openTask.id);
@@ -335,13 +387,17 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
     return (
       <TaskDetail
         key={openTask.id}
+        parent={parentOf(openTask)}
         orgId={orgId}
         projectId={project.id}
         projectName={project.name}
         task={openTask}
         members={members}
         assignable={assignable}
+        reachable={reachable}
         canAssign={canAssign}
+        projectDue={project.dueDate ?? null}
+        onPatchTask={(patch) => setList((l) => l.map((t) => (t.id === openTask.id ? { ...t, ...patch } : t)))}
         features={project.settings ?? {}}
         pager={at >= 0 ? { index: at, total: shown.length, onPrev: () => go(-1), onNext: () => go(1) } : null}
         onClose={closeDetail}
@@ -369,7 +425,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
           <button type="button" className="pg-gear" onClick={() => setShowSettings(true)} title="Paramètres du projet" aria-label="Paramètres du projet"><Icon name="gear" size={18} /></button>
         </div>
         <div className="pg-meta">
-          {busy ? <span className="pg-prog"><Skel w={150} h={14} /></span> : <span className="pg-prog"><span className="pj-pb"><i style={{ width: `${top.length ? Math.round((top.filter((t) => t.status === "done").length / top.length) * 100) : 0}%`, background: projectColor(project.name, project.color) }} /></span>{top.filter((t) => t.status === "done").length} / {top.length} tâches</span>}
+          {busy ? <span className="pg-prog"><Skel w={150} h={14} /></span> : <span className="pg-prog"><span className="pj-pb"><i style={{ width: `${work.length ? Math.round((workDone / work.length) * 100) : 0}%`, background: projectColor(project.name, project.color) }} /></span>{workDone} / {work.length} tâches</span>}
           <span className="pj-avs">
             {[...new Set(top.map((t) => t.assigneeId).filter(Boolean))].slice(0, 4).map((id) => {
               const m = members.find((x) => x.userId === id);
@@ -380,7 +436,7 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
         </div>
         {canEdit && <button className="pj-new" onClick={() => setCreating(true)}><Icon name="plus" size={18} /> Nouvelle tâche</button>}
       </div>
-      <ProjectHeader orgId={orgId} project={project} onChange={setProject} onDeleted={onBack} />
+      <ProjectHeader orgId={orgId} project={project} tasks={loaded ? list : null} onChange={setProject} onDeleted={onBack} />
       <div className="pg-tools">
         <div className="pg-sec" role="group" aria-label="Sections du projet">
           <button type="button" className="on" aria-current="page">Tâches</button>
@@ -417,9 +473,9 @@ export default function Tasks({ orgId, project: initial, members, canAssign, rea
       {busy ? (
         view === "kanban" ? <KanbanSkeleton /> : view === "gantt" ? <PlanSkeleton /> : view === "calendar" ? <CalendarSkeleton /> : view === "reports" ? <ReportsSkeleton /> : <ListSkeleton />
       ) : view === "kanban" ? (
-        <Kanban isBusy={busyOf} tasks={shown} stages={stages} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Kanban canEditTask={editableOf} canDeleteTask={canDeleteTask} isBusy={busyOf} tasks={shown} stages={stages} subStats={subStats} members={members} canAssign={canAssign} onMove={canEdit ? move : undefined} onChange={change} onQuickAdd={canEdit ? quickAdd : undefined} onRemove={canEdit ? remove : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "gantt" ? (
-        <Gantt tasks={shown} dependencies={depsOn ? deps : []} members={members} onMove={move} onChange={canEdit ? change : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
+        <Gantt canEditTask={editableOf} tasks={shown} dependencies={depsOn ? deps : []} members={members} onMove={move} onChange={canEdit ? change : undefined} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "calendar" ? (
         <Calendar tasks={shown} members={members} onOpen={(task) => openDetail(task.id)} onSidebar={(task) => { setOpenId(null); setSidebarTask(task); }} />
       ) : view === "reports" ? (

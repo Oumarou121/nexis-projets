@@ -185,9 +185,10 @@ describe("validation des tâches", () => {
 describe("commentaires des tâches", () => {
   const comments = (org = ORG, project = PROJECT) => `${projects(org)}/${project}/tasks/${TASK}/comments`;
 
-  test("lecteur : commenter ou supprimer un commentaire → 403", async () => {
-    assert.equal((await call("POST", comments(), { as: 2, body: { body: "Bonjour" } })).status, 403);
-    assert.equal((await call("DELETE", `${comments()}/${TASK}`, { as: 2 })).status, 403);
+  test("observateur (lecture seule) : il commente, mais ne supprime pas le commentaire d'un autre → 403", async () => {
+    assert.equal((await call("POST", comments(), { as: 2, body: { body: "Bonjour" } })).status, 201);
+    const other = await call("POST", comments(), { as: 1, body: { body: "Commentaire d'un responsable" } });
+    assert.equal((await call("DELETE", `${comments()}/${other.json.id}`, { as: 2 })).status, 403);
   });
 
   test("sans droit de lecture : lister les commentaires → 403", async () => {

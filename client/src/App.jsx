@@ -16,7 +16,7 @@ import logo from "./assets/logo.png";
 import logoDark from "./assets/logo-dark.png";
 import GlobalSearch from "./GlobalSearch.jsx";
 import NotificationBell from "./NotificationBell.jsx";
-import { PermsContext, featureOn } from "./perms.js";
+import { PermsContext, buildPerms, featureOn, projectPerms } from "./perms.js";
 
 const THEME_ICON = { light: "sun", dark: "moon", auto: "monitor" };
 
@@ -155,7 +155,7 @@ export default function App() {
   const orgName = orgLabel(orgAccess) || (orgId ? "nexis" : "");
   const orgLogo = orgAccess?.organizationLogoUrl || "";
   const has = (p) => !!orgAccess?.permissions?.includes(p);
-  const perms = { canCreate: has("projects.create"), canEdit: has("projects.update"), canDelete: has("projects.delete") };
+  const perms = buildPerms(has, access?.user?.id ?? null);
   const inProject = !!project;
   // Tant que NEXIS n'a pas répondu, la barre garde sa forme définitive (onglets, recherche, avatar
   // invisibles mais en place) : rien ne se décale quand ils apparaissent.
@@ -235,7 +235,10 @@ export default function App() {
       <main className="page">
         {err && (orgId ? <div className="content"><ErrorState compact message={err} onRetry={retryFn ?? loadMe} /></div> : <ErrorState message={err} onRetry={loadMe} />)}
         {orgId && project ? (
-          <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onReloadPeople={() => loadPeople(true)} onBack={() => setProject(null)} onNav={goTo} />
+          // Droits DANS ce projet (rôle effectif renvoyé par le serveur) pour tout l'écran du projet.
+          <PermsContext.Provider value={projectPerms(perms, project.myRole)}>
+            <Tasks key={project.id} orgId={orgId} project={project} onProjectChange={setProject} openTaskId={openTaskId} command={cmd} {...people} onReloadPeople={() => loadPeople(true)} onBack={() => setProject(null)} onNav={goTo} />
+          </PermsContext.Provider>
         ) : orgId && tab === "dashboard" ? (
           <div className="content"><Dashboard key={orgId} orgId={orgId} members={people.members} ready={people.ready} onShowMine={() => setTab("mine")} /></div>
         ) : orgId && tab === "activity" ? (

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { db } from "../db.js";
-import { UUID_RE, httpError, requirePermission } from "../auth.js";
-import { DATE_RE, PRIORITIES, assertProject, unwrap } from "../util.js";
+import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
+import { DATE_RE, PRIORITIES, assertProject, countsForProgress, isOpenProject, isWork, selectAll, unwrap } from "../util.js";
+import { todayFor } from "../dates.js";
 import tasks from "./tasks.js";
 import projectDependencies from "./projectDependencies.js";
 import { changedFields, logActivity, syncActivityVisibility } from "../activity.js";
 import { pathsForTasks, removeFiles } from "../storage.js";
-import { VISIBILITIES, addMember, assigneesWithoutAccess, getScope, isFullAccess, projectGuard, removeMember } from "../access.js";
+import { VISIBILITIES, addMember, assertManager, assigneesWithoutAccess, getScope, higher, isFullAccess, isProjectRole, orgBaseRole, projectGuard, projectRole, removeMember } from "../access.js";
 import members from "./members.js";
 import guests, { revokeAllGuests } from "./guests.js";
 import stages from "./stages.js";
@@ -100,40 +101,60 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("projects").select(COLS).eq("organization_id", req.params.orgId).order("created_at", { ascending: false }),
   ).filter((r) => !scope.hiddenSet.has(r.id));
-  // Chiffres affichés sur la page Projets : tâches principales (hors sous-tâches).
-  // Avancement (terminées / total), retards, membres concernés et jalons à venir.
+  // Chiffres affichés sur la page Projets, selon les règles communes (util.js) : avancement et retards sur les
+  // tâches principales hors jalons, membres concernés = tout ce qui leur est assigné, jalons à venir à part.
+  // allCount = tout ce que supprimerait la suppression du projet (sous-tâches et jalons compris).
   // Un échec ne bloque pas la liste : les compteurs sont alors à 0.
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayFor(req);
   const stats = new Map();
   const of = (id) => {
-    if (!stats.has(id)) stats.set(id, { total: 0, done: 0, late: 0, open: {}, milestones: [] });
+    if (!stats.has(id)) stats.set(id, { all: 0, total: 0, done: 0, late: 0, open: {}, milestones: [] });
     return stats.get(id);
   };
   if (rows.length > 0) {
-    const { data, error } = await db
-      .from("tasks")
-      .select("project_id, status, assignee_id, due_date, is_milestone")
-      .is("parent_id", null)
-      .in("project_id", rows.map((r) => r.id));
-    if (error) console.warn("[projets] compteurs indisponibles :", error.message);
-    for (const t of data ?? []) {
+    const statusOf = new Map(rows.map((r) => [r.id, r.status]));
+    let data = [];
+    try {
+      data = await selectAll(() =>
+        db.from("tasks").select("id, project_id, parent_id, status, assignee_id, due_date, is_milestone").in("project_id", rows.map((r) => r.id)).order("id", { ascending: true }),
+      );
+    } catch (e) {
+      console.warn("[projets] compteurs indisponibles :", e.message);
+    }
+    for (const t of data) {
       const s = of(t.project_id);
-      s.total += 1;
-      if (t.status === "done") {
-        s.done += 1;
+      s.all += 1;
+      const open = t.status !== "done";
+      if (t.is_milestone) {
+        if (open && t.due_date) s.milestones.push(t.due_date);
         continue;
       }
-      if (t.due_date && t.due_date < today) s.late += 1;
-      if (t.assignee_id) s.open[t.assignee_id] = (s.open[t.assignee_id] ?? 0) + 1;
-      if (t.is_milestone && t.due_date) s.milestones.push(t.due_date);
+      const main = countsForProgress(t);
+      if (main) s.total += 1;
+      if (!open) {
+        if (main) s.done += 1;
+        continue;
+      }
+      if (!isOpenProject(statusOf.get(t.project_id))) continue;
+      if (main && t.due_date && t.due_date < today) s.late += 1;
+      if (isWork(t) && t.assignee_id) s.open[t.assignee_id] = (s.open[t.assignee_id] ?? 0) + 1;
     }
+  }
+  // Rôle effectif dans chaque projet : celui de l'organisation, relevé par celui donné dans le projet.
+  const base = await orgBaseRole(req);
+  const memberRoles = new Map();
+  if (rows.length > 0) {
+    const mine = unwrap(await db.from("project_members").select("*").eq("user_id", req.auth.userId).in("project_id", rows.map((r) => r.id)));
+    for (const m of mine) memberRoles.set(m.project_id, isProjectRole(m.role) ? m.role : "contributor");
   }
   res.json(
     rows.map((r) => {
       const s = of(r.id);
       return {
         ...toApi(r),
+        myRole: higher(base, memberRoles.get(r.id) ?? null),
         taskCount: s.total,
+        allCount: s.all,
         doneCount: s.done,
         lateCount: s.late,
         openByAssignee: s.open,
@@ -149,11 +170,42 @@ router.get("/:id", requirePermission("projects.read"), async (req, res) => {
     await db.from("projects").select(COLS).eq("id", req.params.id).eq("organization_id", req.params.orgId).maybeSingle(),
   );
   if (!row) throw httpError(404, "Projet introuvable.");
-  res.json(toApi(row));
+  res.json({ ...toApi(row), myRole: await projectRole(req) });
 });
+
+/** Membres choisis à la création : [{ userId, role }], membres actifs de l'organisation (annuaire d'Identity). */
+async function parseInitialMembers(req) {
+  const raw = req.body?.members;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 100) throw httpError(400, "Membres invalides.");
+  const list = [];
+  const seen = new Set([req.auth.userId]); // le créateur est ajouté à part, comme responsable
+  for (const m of raw) {
+    const userId = String(m?.userId ?? "");
+    if (!UUID_RE.test(userId)) throw httpError(400, "Membre invalide.");
+    const role = m?.role ?? "contributor";
+    if (!isProjectRole(role)) throw httpError(400, "Rôle invalide (manager, contributor ou viewer).");
+    if (!seen.has(userId)) {
+      seen.add(userId);
+      list.push({ userId, role });
+    }
+  }
+  if (list.length === 0) return [];
+  let directory;
+  try {
+    directory = await listOrgMembers(req.auth, req.params.orgId);
+  } catch (e) {
+    if (e.status === 403) throw httpError(403, "Le droit de consulter les utilisateurs est requis pour choisir les membres d’un projet.");
+    throw e;
+  }
+  const known = new Set(directory.map((m) => m.userId));
+  if (list.some((m) => !known.has(m.userId))) throw httpError(400, "Une des personnes choisies n’appartient pas à l’organisation.");
+  return list;
+}
 
 router.post("/", requirePermission("projects.create"), async (req, res) => {
   const f = parse(req.body, { partial: false });
+  const initialMembers = await parseInitialMembers(req); // vérifiés AVANT de créer quoi que ce soit
   const row = unwrap(
     await db
       .from("projects")
@@ -168,10 +220,10 @@ router.post("/", requirePermission("projects.create"), async (req, res) => {
   } catch (e) {
     console.warn("[projets] étapes initiales non créées :", e.message);
   }
-  // Le créateur est le premier membre. Pour un projet privé, c'est indispensable : on annule la
-  // création plutôt que de laisser un projet que personne (hors responsables) ne peut ouvrir.
+  // Le créateur est le premier membre, et le RESPONSABLE du projet. Pour un projet privé, c'est indispensable :
+  // on annule la création plutôt que de laisser un projet que personne (hors administrateurs) ne peut ouvrir.
   try {
-    await addMember(row.id, req.auth.userId, req.auth.userId);
+    await addMember(row.id, req.auth.userId, req.auth.userId, "manager");
   } catch (e) {
     if (row.visibility === "private") {
       await db.from("projects").delete().eq("id", row.id);
@@ -179,21 +231,32 @@ router.post("/", requirePermission("projects.create"), async (req, res) => {
     }
     console.warn("[projets] créateur non inscrit comme membre :", e.message);
   }
+  // Membres choisis à la création (avec leur rôle) : un échec n'annule pas le projet, on le signale.
+  let membersNotAdded = 0;
+  for (const m of initialMembers) {
+    try {
+      await addMember(row.id, m.userId, req.auth.userId, m.role);
+    } catch {
+      membersNotAdded += 1;
+    }
+  }
   await logActivity({
     orgId: req.params.orgId, actorId: req.auth.userId, action: "create", entityType: "project",
     entityId: row.id, projectId: row.id, label: row.name,
   });
-  res.status(201).json(toApi(row));
+  res.status(201).json({ ...toApi(row), myRole: "manager", ...(membersNotAdded ? { membersNotAdded } : {}) });
 });
 
-router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
+router.patch("/:id", async (req, res) => {
   checkId(req.params.id);
+  // Nom, statut, visibilité (privé / public), paramètres : la gestion du projet, pas la contribution.
+  await assertManager(req, "Seul un responsable du projet peut le modifier.");
   const f = parse(req.body, { partial: true });
   if (Object.keys(f).length === 0) throw httpError(400, "Aucune modification.");
   const becomesPrivate = f.visibility === "private" && req.project.visibility !== "private";
   // Celui qui rend le projet privé ne doit pas s'en exclure : il en devient membre AVANT le changement
   // (un responsable voit déjà tout, il n'a pas besoin d'être inscrit).
-  const added = becomesPrivate && !(await isFullAccess(req)) ? await addMember(req.params.id, req.auth.userId, req.auth.userId) : false;
+  const added = becomesPrivate && !(await isFullAccess(req)) ? await addMember(req.params.id, req.auth.userId, req.auth.userId, "manager") : false;
   // Si la modification n'aboutit pas, l'ajout fait juste avant est annulé : pas de membre « fantôme ».
   const undoAdd = async () => {
     if (added) await removeMember(req.params.id, req.auth.userId);
@@ -227,7 +290,8 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   });
   // Passage en privé : les personnes qui ont une tâche en cours sans être membres la perdent de vue.
   // Le client les signale ; la liste nominative est dans l'onglet Membres.
-  res.json(becomesPrivate ? { ...toApi(row), assigneesWithoutAccess: await assigneesWithoutAccess(row.id) } : toApi(row));
+  const out = { ...toApi(row), myRole: await projectRole(req) };
+  res.json(becomesPrivate ? { ...out, assigneesWithoutAccess: await assigneesWithoutAccess(row.id) } : out);
 });
 
 router.delete("/:id", requirePermission("projects.delete"), async (req, res) => {

@@ -7,7 +7,7 @@ import { pushEnabled, sendPush } from "./push.js";
 // Notifications dans l'application. notify() est le POINT D'ENTRÉE UNIQUE : les routes disent
 // « il s'est passé ceci pour cette personne » ; les canaux (cloche aujourd'hui, e-mail et push plus tard)
 // se décident ici et nulle part ailleurs. Canaux : cloche (toujours), e-mail, push (appareils enregistrés).
-export const NOTIFICATION_TYPES = ["task_assigned", "project_member_added", "project_access_removed", "task_commented", "task_mentioned", "task_due_soon", "task_overdue"];
+export const NOTIFICATION_TYPES = ["task_assigned", "project_member_added", "project_access_removed", "task_commented", "task_mentioned", "task_due_soon", "task_overdue", "task_reassign_requested", "task_reassign_answered"];
 
 /**
  * Crée une notification. Ne fait JAMAIS échouer la requête appelante (comme logActivity).

@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { db } from "../db.js";
-import { UUID_RE, hasPermission, httpError, listOrgMembers, requirePermission } from "../auth.js";
+import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
 import { assertProject, assertTask, clip, unwrap } from "../util.js";
 import { logActivity } from "../activity.js";
+import { isManager, requireRole } from "../access.js";
 import { notify } from "../notifications.js";
 
 // Monté sous .../projects/:projectId/tasks/:taskId/comments.
-// Lire = projects.read ; commenter = projects.update (comme toute modification d'une tâche).
-// Supprimer : son propre commentaire (projects.update) ou n'importe lequel avec projects.delete.
+// Lire et commenter : tout rôle dans le projet, observateur compris.
+// Supprimer : son propre commentaire, ou n'importe lequel pour un gestionnaire.
 const COLS = "id, task_id, author_id, body, created_at";
 
 const toApi = (r, userId, canModerate) => ({
@@ -72,11 +73,11 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("task_comments").select(COLS).eq("task_id", taskId).order("created_at", { ascending: true }),
   );
-  const canModerate = await hasPermission(req.auth, orgId, "projects.delete");
+  const canModerate = await isManager(req);
   res.json(rows.map((r) => toApi(r, req.auth.userId, canModerate)));
 });
 
-router.post("/", requirePermission("projects.update"), async (req, res) => {
+router.post("/", requireRole("viewer"), async (req, res) => {
   const body = String(req.body?.body ?? "").trim();
   if (body.length < 1 || body.length > 4000) throw httpError(400, "Le commentaire doit faire 1 à 4000 caractères.");
   const mentions = parseMentions(req.body?.mentions, req.auth.userId);
@@ -94,7 +95,7 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
   res.status(201).json(toApi(row, req.auth.userId, false));
 });
 
-router.delete("/:commentId", requirePermission("projects.update"), async (req, res) => {
+router.delete("/:commentId", requireRole("viewer"), async (req, res) => {
   const { commentId, taskId, projectId, orgId } = req.params;
   if (!UUID_RE.test(commentId)) throw httpError(404, "Commentaire introuvable.");
   await assertProject(req.params);
@@ -103,8 +104,8 @@ router.delete("/:commentId", requirePermission("projects.update"), async (req, r
     await db.from("task_comments").select("id, author_id").eq("id", commentId).eq("task_id", taskId).maybeSingle(),
   );
   if (!found) throw httpError(404, "Commentaire introuvable.");
-  if (found.author_id !== req.auth.userId && !(await hasPermission(req.auth, orgId, "projects.delete"))) {
-    throw httpError(403, "Seul l’auteur ou un responsable peut supprimer ce commentaire.");
+  if (found.author_id !== req.auth.userId && !(await isManager(req))) {
+    throw httpError(403, "Seul l’auteur ou un gestionnaire peut supprimer ce commentaire.");
   }
   unwrap(await db.from("task_comments").delete().eq("id", commentId));
   res.status(204).end();

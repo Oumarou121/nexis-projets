@@ -15,7 +15,7 @@ const STATUS = { active: ["Actif", "ok"], expired: ["Expiré", "warn"], revoked:
  * (à transmettre lui-même) et on l'affiche une seule fois ici.
  */
 export default function ProjectSharing({ orgId, project, onBusy }) {
-  const { canEdit } = usePerms();
+  const { canManage } = usePerms();
   const url = `/api/organizations/${orgId}/projects/${project.id}/guests`;
   const [rows, setRows] = useState(null);
   const [email, setEmail] = useState("");
@@ -25,7 +25,8 @@ export default function ProjectSharing({ orgId, project, onBusy }) {
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState(null); // { text, link? }
 
-  const load = useCallback(() => api(url).then(setRows).catch((e) => setErr(e.message)), [url]);
+  // Les invités (adresses externes) ne sont visibles que des gestionnaires : le serveur refuse les autres.
+  const load = useCallback(() => (canManage ? api(url).then(setRows).catch((e) => setErr(e.message)) : Promise.resolve(setRows([]))), [url, canManage]);
   useEffect(() => { load(); }, [load]);
 
   function report(res, who) {
@@ -73,7 +74,7 @@ export default function ProjectSharing({ orgId, project, onBusy }) {
         <p className="pm-note">
           Les invités reçoivent un <b>lien personnel</b> par e-mail et consultent le projet en <b>lecture seule</b> : nom, description et tâches (titres, statuts, échéances). Ils ne voient ni les commentaires, ni les pièces jointes, ni le temps passé, ni les personnes assignées. Le lien est <b>personnel</b> : ne le transférez pas.
         </p>
-        {canEdit ? (
+        {canManage ? (
           <form className="pm-add sh-add" onSubmit={invite}>
             <input type="email" required maxLength={254} placeholder="adresse@exemple.com" aria-label="Adresse e-mail de l'invité" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
             <select aria-label="Durée de validité" value={days ?? "none"} onChange={(e) => setDays(e.target.value === "none" ? null : Number(e.target.value))}>
@@ -82,7 +83,7 @@ export default function ProjectSharing({ orgId, project, onBusy }) {
             <button className="pj-ok" disabled={busy || !email.trim()}>Inviter</button>
           </form>
         ) : (
-          <p className="muted small">Lecture seule : vous n'avez pas le droit d'inviter.</p>
+          <p className="muted small">Seul un gestionnaire du projet peut inviter des personnes extérieures et voir les invitations.</p>
         )}
         {notice && (
           <div className="pm-warn" role="status" style={{ marginTop: 12 }}>
@@ -116,8 +117,8 @@ export default function ProjectSharing({ orgId, project, onBusy }) {
                   </small>
                 </span>
                 <span className={`sh-badge ${tone}`}>{label}</span>
-                {canEdit && g.status !== "revoked" && <button type="button" className="ghost" disabled={busy} onClick={() => resend(g)} title="Envoie un nouveau lien ; l'ancien cesse de fonctionner">Renvoyer</button>}
-                {canEdit && g.status !== "revoked" && (
+                {canManage && g.status !== "revoked" && <button type="button" className="ghost" disabled={busy} onClick={() => resend(g)} title="Envoie un nouveau lien ; l'ancien cesse de fonctionner">Renvoyer</button>}
+                {canManage && g.status !== "revoked" && (
                   <button type="button" className="icon-btn" aria-label={`Révoquer ${g.email}`} disabled={busy} onClick={() => revoke(g)}><Icon name="close" size={16} /></button>
                 )}
               </li>

@@ -13,7 +13,7 @@ const READER = 5; // projects.read seulement
 
 const org = (permissions) => ({ platformAdmin: false, organizations: [{ organizationId: ORG, permissions }] });
 const access = {
-  [uid(MANAGER)]: org(["projects.read", "projects.update", "users.read"]),
+  [uid(MANAGER)]: org(["projects.read", "projects.update", "users.read"]), // responsable des trois projets (voir seed)
   [uid(READER)]: org(["projects.read"]),
 };
 
@@ -33,7 +33,7 @@ before(async () => {
     seed: (s) => {
       const project = (id, name, visibility) => ({ id, organization_id: ORG, name, description: "Description publique", visibility, status: "active", priority: "medium", created_by: uid(MANAGER) });
       s.projects.push(project(P_PUB, "Projet partagé", "public"), project(P_INT, "Projet interne", "internal"), project(P_PRIV, "Projet secret", "private"));
-      s.project_members.push({ project_id: P_PRIV, user_id: uid(MANAGER), added_by: uid(MANAGER) });
+      for (const id of [P_PUB, P_INT, P_PRIV]) s.project_members.push({ project_id: id, user_id: uid(MANAGER), added_by: uid(MANAGER), role: "manager" });
       s.tasks.push(
         { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1", project_id: P_PUB, title: "Maquettes", status: "done", priority: "high", assignee_id: uid(MANAGER), created_by: uid(MANAGER), description: "Budget interne : 50 k€", labels: ["confidentiel"], due_date: "2020-01-01", start_date: null, is_milestone: false, parent_id: null },
         { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2", project_id: P_PUB, title: "Livraison", status: "todo", priority: "medium", assignee_id: uid(READER), created_by: uid(MANAGER), description: null, labels: [], due_date: "2020-02-01", start_date: null, is_milestone: true, parent_id: null },
@@ -134,7 +134,7 @@ describe("portail : ce que voit un invité", () => {
     assert.deepEqual(Object.keys(r.json.project).sort(), ["color", "description", "dueDate", "name", "status"]);
     assert.deepEqual(Object.keys(r.json.tasks[0]).sort(), ["dueDate", "id", "isMilestone", "parentId", "priority", "stage", "stageColor", "stageId", "startDate", "status", "title"]);
     assert.deepEqual(r.json.tasks.map((t) => t.title), ["Maquettes", "Livraison"], "uniquement les tâches de CE projet");
-    assert.deepEqual(r.json.stats, { total: 2, done: 1, late: 1 });
+    assert.deepEqual(r.json.stats, { total: 1, done: 1, late: 0 }); // « Livraison » est un jalon : ni tâche, ni retard
     const raw = JSON.stringify(r.json);
     for (const leak of ["Budget interne", "confidentiel", uid(MANAGER), uid(READER), "Tâche privée", "Projet secret"]) {
       assert.ok(!raw.includes(leak), `fuite : ${leak}`);

@@ -34,7 +34,8 @@ before(async () => {
     seed: (s) => {
       const project = (id, name, visibility) => ({ id, organization_id: ORG, name, visibility, status: "active", priority: "medium", created_by: uid(MEMBER) });
       s.projects.push(project(P_INT, "Projet ouvert", "internal"), project(P_PRIV, "Projet secret", "private"));
-      for (const u of [MEMBER, OTHER]) s.project_members.push({ project_id: P_PRIV, user_id: uid(u), added_by: uid(MEMBER) });
+      for (const u of [MEMBER, OTHER]) s.project_members.push({ project_id: P_PRIV, user_id: uid(u), added_by: uid(MEMBER), role: u === MEMBER ? "manager" : "contributor" });
+      s.project_members.push({ project_id: P_INT, user_id: uid(MEMBER), added_by: uid(MEMBER), role: "manager" }); // MEMBER répartit le travail
       const task = (id, project_id, title) => ({ id, project_id, title, assignee_id: null, status: "todo", priority: "medium", labels: [], created_by: uid(MEMBER) });
       s.tasks.push(task(T_INT, P_INT, "Tâche ouverte"), task(T_PRIV, P_PRIV, "Plan secret"));
     },
@@ -101,7 +102,8 @@ describe("projet privé", () => {
   });
 
   test("retiré du projet : il en est prévenu, et les notifications du projet disparaissent de sa liste", async () => {
-    assert.equal((await call("DELETE", `${projects}/${P_PRIV}/members/${uid(OTHER)}`, { as: MEMBER })).status, 204);
+    // Il a une tâche en cours : on la lui laisse (keep=1), le retrait n'attend pas de choix.
+    assert.equal((await call("DELETE", `${projects}/${P_PRIV}/members/${uid(OTHER)}?keep=1`, { as: MEMBER })).status, 204);
     const out = await list(OTHER);
     assert.ok(!out.items.some((i) => i.projectId === P_PRIV), "rien du projet privé ne doit rester visible");
     const removal = out.items.find((i) => i.type === "project_access_removed");
@@ -246,8 +248,11 @@ describe("canal e-mail", () => {
     assert.ok([200, 201].includes(r.status));
     await idle();
     sent.length = 0;
-    // NO_LIST n'est pas membre de P_PRIV : on ajoute ce droit via l'organisation interne uniquement.
-    const t = await call("PATCH", `${projects}/${P_INT}/tasks/${T_INT}`, { as: NO_LIST, body: { status: "done" } });
+    // NO_LIST n'est pas membre de P_PRIV : il agit sur une tâche du projet interne, la sienne (un contributeur
+    // ne modifie que ses tâches).
+    const own = await call("POST", `${projects}/${P_INT}/tasks`, { as: NO_LIST, body: { title: "Tâche de NO_LIST" } });
+    assert.equal(own.status, 201);
+    const t = await call("PATCH", `${projects}/${P_INT}/tasks/${own.json.id}`, { as: NO_LIST, body: { status: "done" } });
     assert.equal(t.status, 200);
     await idle();
     assert.equal(sent.length, 0);

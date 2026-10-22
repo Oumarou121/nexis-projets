@@ -125,7 +125,7 @@ export async function listOrgMembers(auth, orgId) {
   const { members = [] } = await identityJson(res);
   const data = members
     .filter((m) => m.status === "active")
-    .map((m) => ({ userId: m.userId, email: m.email, firstName: m.firstName, lastName: m.lastName }));
+    .map((m) => ({ userId: m.userId, email: m.email, firstName: m.firstName, lastName: m.lastName, role: m.role ?? null }));
   membersCache.set(key, { at: Date.now(), data });
   return data;
 }

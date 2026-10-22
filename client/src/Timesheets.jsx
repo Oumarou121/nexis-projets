@@ -23,7 +23,9 @@ function Entry({ entry, who, member, onSave, onRemove, busy = false }) {
   const [date, setDate] = useState(entry.date);
   const [description, setDescription] = useState(entry.description ?? "");
   const [duration, setDuration] = useState(minutesToHours(entry.duration));
-  const { canEdit } = usePerms();
+  // Chacun son temps : une ligne se modifie par son auteur, ou par un gestionnaire.
+  const { canManage, userId } = usePerms();
+  const canEdit = canManage || entry.userId === userId;
   useEffect(() => {
     setDate(entry.date);
     setDescription(entry.description ?? "");
@@ -32,7 +34,7 @@ function Entry({ entry, who, member, onSave, onRemove, busy = false }) {
 
   return (
     <li className="tsx-row">
-      <input type="date" aria-label="Date" disabled={!canEdit || busy} className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
+      <input type="date" aria-label="Date" max={todayISO()} disabled={!canEdit || busy} className="ti tsx-date" value={date} onChange={(e) => setDate(e.target.value)} onBlur={() => date && date !== entry.date && onSave(entry, { date })} />
       <span className="ass tsx-who"><Avatar member={member} name={member ? undefined : who} size={24} /><span>{who}</span></span>
       <input className="ti tsx-desc" readOnly={!canEdit || busy} aria-label="Description" value={description} placeholder="Que avez-vous fait ?" onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== (entry.description ?? "") && onSave(entry, { description })} />
       <input
@@ -53,7 +55,8 @@ function Entry({ entry, who, member, onSave, onRemove, busy = false }) {
 }
 
 /** Feuilles de temps d'une tâche : lignes modifiables et total des heures passées. */
-export default function Timesheets({ orgId, projectId, taskId, members, onBusy }) {
+// canLog : saisir du temps sur cette tâche (gestionnaire, ou tâche qui est la sienne).
+export default function Timesheets({ orgId, projectId, taskId, members, onBusy, canLog }) {
   const [timesheets, setTimesheets] = useState(null);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
@@ -64,7 +67,8 @@ export default function Timesheets({ orgId, projectId, taskId, members, onBusy }
   const blank = () => ({ date: todayISO(), description: "", duration: "01:00" });
   const [newEntry, setNewEntry] = useState(blank);
   const base = `/api/organizations/${orgId}/projects/${projectId}/tasks/${taskId}/timesheets`;
-  const { canEdit } = usePerms();
+  const perms = usePerms();
+  const canEdit = canLog ?? perms.canEdit;
 
   useEffect(() => {
     api(base).then(setTimesheets).catch((e) => setErr(e.message));
@@ -143,7 +147,7 @@ export default function Timesheets({ orgId, projectId, taskId, members, onBusy }
       )}
       {!canEdit ? null : adding ? (
         <form onSubmit={addEntry} className={`tsx-form ${saving ? "bs-inert" : ""}`} aria-busy={saving} inert={saving ? "" : undefined}>
-          <input type="date" aria-label="Date" value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} />
+          <input type="date" aria-label="Date" max={todayISO()} value={newEntry.date} onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })} />
           <input placeholder="Description" aria-label="Description" value={newEntry.description} onChange={(e) => setNewEntry({ ...newEntry, description: e.target.value })} className="grow" />
           <input aria-label="Durée (HH:MM)" value={newEntry.duration} onChange={(e) => setNewEntry({ ...newEntry, duration: e.target.value })} className="dur-in" placeholder="HH:MM" />
           <button type="submit" className={`bs ${saving ? "bs-run" : ""}`} disabled={saving}><BusyLabel busy={saving}>Ajouter</BusyLabel></button>

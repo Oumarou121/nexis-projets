@@ -61,7 +61,7 @@ app.use("/api/organizations/:orgId/projects", requireAuth, projects);
 app.use((err, req, res, _next) => {
   if (err.status) {
     if (err.status >= 500) console.error(`[api] ${req.method} ${req.originalUrl} → ${err.status} ${err.message}`); // quelle API échoue, et quand
-    return res.status(err.status).json({ error: err.message });
+    return res.status(err.status).json({ error: err.message, ...(err.details ?? {}) }); // details : ex. { openTasks }
   }
   console.error(`[api] ${req.method} ${req.originalUrl} → erreur non prévue`);
   console.error(err);

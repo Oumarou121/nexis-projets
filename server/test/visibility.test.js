@@ -27,7 +27,7 @@ const access = {
   [uid(FULL)]: org([...ALL, "users.read"]),
   [uid(READER)]: org(["projects.read"]),
   [uid(ADMIN)]: { platformAdmin: true, organizations: [] },
-  [uid(OUTSIDER)]: org(["projects.read", "projects.update", "users.read"]),
+  [uid(OUTSIDER)]: org(["projects.read", "projects.update", "users.read"]), // responsable du projet interne seulement (voir seed)
   [uid(MEMBER)]: org(["projects.read", "projects.update", "projects.create", "users.read"]),
   [uid(NO_LIST)]: org(["projects.read", "projects.update"]),
   [uid(STRANGER)]: { platformAdmin: false, organizations: [{ organizationId: OTHER_ORG, permissions: ALL }] }, // tous les droits, mais dans une autre organisation
@@ -46,7 +46,9 @@ before(async () => {
     seed: (s) => {
       const project = (id, name, visibility) => ({ id, organization_id: ORG, name, visibility, status: "active", priority: "medium", created_by: uid(MEMBER) });
       s.projects.push(project(P_INT, "Projet ouvert", "internal"), project(P_PRIV, "Projet secret", "private"), project(P_PRIV2, "Projet confidentiel", "private"));
-      for (const id of [P_INT, P_PRIV, P_PRIV2]) s.project_members.push({ project_id: id, user_id: uid(MEMBER), added_by: uid(MEMBER), created_at: "2026-10-01T00:00:00Z" });
+      for (const id of [P_INT, P_PRIV, P_PRIV2]) s.project_members.push({ project_id: id, user_id: uid(MEMBER), added_by: uid(MEMBER), role: "manager", created_at: "2026-10-01T00:00:00Z" });
+      // OUTSIDER est responsable du projet interne (il en change la visibilité), sans être membre des projets privés.
+      s.project_members.push({ project_id: P_INT, user_id: uid(OUTSIDER), added_by: uid(MEMBER), role: "manager", created_at: "2026-10-01T00:00:00Z" });
       const task = (id, project_id, title, assignee_id = null) => ({ id, project_id, title, assignee_id, status: "todo", priority: "medium", labels: [], created_by: uid(MEMBER) });
       s.tasks.push(
         task(T_INT, P_INT, "Tâche ouverte"),
@@ -104,11 +106,13 @@ describe("projet privé : un non-membre ne le voit nulle part", () => {
     assert.equal((await call("GET", `${projects}/${P_PRIV}`, { as: MEMBER })).status, 200);
   });
 
-  test("sans droit, le refus est le même (403) que le projet soit privé ou inexistant", async () => {
+  test("sans droit, le refus est le même que le projet soit privé ou inexistant", async () => {
+    // Le droit d'écrire se décide par le rôle DANS le projet, une fois le projet trouvé : un projet privé
+    // qu'on ne voit pas répond donc 404, exactement comme un projet inexistant (rien n'est révélé).
     const a = await call("PATCH", `${projects}/${P_PRIV}`, { as: READER, body: { name: "x1" } });
     const b = await call("PATCH", `${projects}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaff`, { as: READER, body: { name: "x1" } });
-    assert.equal(a.status, 403);
-    assert.equal(b.status, 403);
+    assert.equal(a.status, 404);
+    assert.deepEqual([a.status, a.json], [b.status, b.json]);
   });
 
   test("toutes les lectures sous le projet : 404 pour un non-membre, 200 pour un membre", async () => {
@@ -315,7 +319,11 @@ describe("gérer les membres", () => {
   });
 
   test("retirer un membre : il perd l'accès, et ses tâches ouvertes sont signalées", async () => {
-    assert.equal((await call("DELETE", `${members}/${uid(NO_LIST)}`, { as: MEMBER })).status, 204);
+    // Tâche en cours : le responsable doit choisir (désassigner ou laisser) → 409 tant qu'il ne l'a pas fait.
+    const ask = await call("DELETE", `${members}/${uid(NO_LIST)}`, { as: MEMBER });
+    assert.equal(ask.status, 409);
+    assert.equal(ask.json.openTasks, 1);
+    assert.equal((await call("DELETE", `${members}/${uid(NO_LIST)}?keep=1`, { as: MEMBER })).status, 204);
     assert.equal((await call("GET", `${projects}/${P_PRIV2}`, { as: NO_LIST })).status, 404);
     const out = (await call("GET", members, { as: MEMBER })).json;
     assert.deepEqual(out.assigneesWithoutAccess, [uid(NO_LIST)]);

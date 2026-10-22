@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import { Router } from "express";
 import { db } from "../db.js";
-import { UUID_RE, hasPermission, httpError, requirePermission } from "../auth.js";
+import { UUID_RE, httpError, requirePermission } from "../auth.js";
+import { isManager, requireRole } from "../access.js";
 import { assertProject, assertTask, unwrap } from "../util.js";
 import { logActivity } from "../activity.js";
 import { BUCKET, MAX_FILES_PER_TASK, MAX_FILE_BYTES, cleanFileName, removeFiles } from "../storage.js";
@@ -36,14 +37,14 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   const rows = unwrap(
     await db.from("task_attachments").select(COLS).eq("task_id", taskId).order("created_at", { ascending: true }),
   );
-  const canModerate = await hasPermission(req.auth, orgId, "projects.delete");
+  const canModerate = await isManager(req);
   res.json(rows.map((r) => toApi(r, req.auth.userId, canModerate)));
 });
 
 // Corps = les octets du fichier (Content-Type application/octet-stream). Nom et type en paramètres d'URL.
 router.post(
   "/",
-  requirePermission("projects.update"),
+  requireRole("contributor"),
   express.raw({ type: () => true, limit: MAX_FILE_BYTES }),
   async (req, res) => {
     const { projectId, taskId, orgId } = req.params;
@@ -108,7 +109,7 @@ async function assertRoomForFile(taskId) {
 
 const cleanMime = (raw) => (/^[\w.+-]+\/[\w.+-]+$/.test(String(raw ?? "")) ? String(raw) : "application/octet-stream");
 
-router.post("/upload-url", requirePermission("projects.update"), async (req, res) => {
+router.post("/upload-url", requireRole("contributor"), async (req, res) => {
   const { projectId, taskId } = req.params;
   const size = Number(req.body?.size);
   if (!Number.isInteger(size) || size <= 0) throw httpError(400, "Fichier vide ou absent.");
@@ -126,7 +127,7 @@ router.post("/upload-url", requirePermission("projects.update"), async (req, res
   res.set("Cache-Control", "no-store").json({ uploadId, uploadUrl: data.signedUrl });
 });
 
-router.post("/confirm", requirePermission("projects.update"), async (req, res) => {
+router.post("/confirm", requireRole("contributor"), async (req, res) => {
   const { projectId, taskId, orgId } = req.params;
   const uploadId = String(req.body?.uploadId ?? "");
   if (!UUID_RE.test(uploadId)) throw httpError(400, "Envoi inconnu.");
@@ -201,15 +202,15 @@ router.get("/:attachmentId", requirePermission("projects.read"), async (req, res
   res.send(Buffer.from(await data.arrayBuffer()));
 });
 
-router.delete("/:attachmentId", requirePermission("projects.update"), async (req, res) => {
+router.delete("/:attachmentId", requireRole("contributor"), async (req, res) => {
   const { attachmentId, taskId, projectId, orgId } = req.params;
   if (!UUID_RE.test(attachmentId)) throw httpError(404, "Fichier introuvable.");
   const project = await assertProject(req.params);
   const task = await assertTask(taskId, projectId);
   const row = unwrap(await db.from("task_attachments").select(COLS).eq("id", attachmentId).eq("task_id", taskId).maybeSingle());
   if (!row) throw httpError(404, "Fichier introuvable.");
-  if (row.uploaded_by !== req.auth.userId && !(await hasPermission(req.auth, orgId, "projects.delete"))) {
-    throw httpError(403, "Seul l’auteur ou un responsable peut supprimer ce fichier.");
+  if (row.uploaded_by !== req.auth.userId && !(await isManager(req))) {
+    throw httpError(403, "Seul l’auteur ou un gestionnaire peut supprimer ce fichier.");
   }
   unwrap(await db.from("task_attachments").delete().eq("id", attachmentId));
   await removeFiles([row.storage_path]);

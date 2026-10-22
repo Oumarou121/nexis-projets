@@ -6,7 +6,8 @@ import LabelChips from "./LabelChips.jsx";
 import TaskDependencies from "./TaskDependencies.jsx";
 import Timesheets from "./Timesheets.jsx";
 import { Avatar, BusyLabel, DateField, Icon, PriorityStar, Spin, useInstant } from "./ui.jsx";
-import { MAX_FILE_BYTES, PRIORITY, STATUS_COLOR, TASK_STATUS, stageColor, fileSize, fmtDuration, isLate, memberName, stageDurations } from "./labels.js";
+import ReassignRequest from "./ReassignRequest.jsx";
+import { MAX_FILE_BYTES, PRIORITY, STATUS_COLOR, TASK_STATUS, stageColor, fileSize, fmtDuration, isLate, memberName, shortDate, stageDurations } from "./labels.js";
 import { confirmDialog } from "./confirm.jsx";
 
 /** Sans accents ni majuscules : « é » et « E » se retrouvent en tapant « e ». */
@@ -53,8 +54,15 @@ const ACTIVITY_TYPES = { todo: "À faire", call: "Appel", email: "E-mail", meeti
  * champs sur deux colonnes, onglets, puis la discussion.
  * `pager` = { index, total, onPrev, onNext } pour passer d'une tâche à l'autre.
  */
-export default function TaskDetail({ orgId, projectId, projectName, task, stages, members, assignable = () => members, canAssign, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, isBusy = () => false, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
-  const { canEdit } = usePerms();
+export default function TaskDetail({ orgId, projectId, projectName, task, stages, members, assignable = () => members, reachable = () => members, canAssign, projectDue = null, onPatchTask, features = {}, pager, onClose, onProjects, onCount, onFileCount, subtasks, parent = null, isBusy = () => false, onChangeTask, onMoveTask, onAddSub, onRemoveSub }) {
+  const { canEdit: canContribute, canComment = canContribute, canEditTask, canDeleteTask, canManage, userId } = usePerms();
+  // Modifier la tâche (champs, étape, sous-tâches, dépendances, activités) : gestionnaire, ou tâche qui est
+  // la sienne. Joindre un fichier : tout contributeur. Commenter : tout rôle, observateur compris.
+  // Mêmes règles que le serveur.
+  const canEdit = canEditTask(task, parent);
+  // Changer l'assigné : un contributeur seulement entre « personne » et lui-même.
+  const canReassign = canManage || (canContribute && (!task.assigneeId || task.assigneeId === userId) && (canEdit || !task.assigneeId));
+  const mineActivity = (a) => canManage || a.createdBy === userId || a.assigneeId === userId;
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.id, task.title]);
   const [desc, setDesc] = useState(task.description ?? "");
@@ -251,10 +259,11 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
   }
 
   // « @mot » juste avant le curseur → liste des membres (du projet si privé) dont le nom correspond.
+  // Tous ceux qui ont accès à la tâche (reachable), pas seulement ceux à qui on peut l’assigner ; jamais soi-même.
   const before = text.slice(0, caret);
   const at = /(^|\s)@([^\s@]{0,30})$/.exec(before);
   const suggestions = at
-    ? assignable(null).filter((m) => memberName(m) && fold(memberName(m)).includes(fold(at[2]))).slice(0, 6)
+    ? reachable(null).filter((m) => m.userId !== userId && memberName(m) && fold(memberName(m)).includes(fold(at[2]))).slice(0, 6)
     : [];
 
   function pickMention(m) {
@@ -415,6 +424,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
             </h1>
             {bz("title") && <span className="fv-spin"><Spin size={16} className="ib" /></span>}
           </div>
+          <ReassignRequest orgId={orgId} projectId={projectId} task={task} members={members} assignable={assignable} reachable={reachable} onResolved={onPatchTask} />
           <div className="fgrid">
             <div className="fcol">
               <div className="frow">
@@ -423,13 +433,21 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                   {canAssign ? (
                     <>
                       <Avatar member={members.find((m) => m.userId === task.assigneeId)} size={24} />
-                      <select aria-label="Responsable" disabled={!canEdit || bz("assigneeId")} aria-busy={bz("assigneeId") || undefined} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
+                      <select aria-label="Responsable" disabled={!canReassign || bz("assigneeId")} aria-busy={bz("assigneeId") || undefined} value={task.assigneeId ?? ""} onChange={async (e) => setErr((await onChangeTask(task, { assigneeId: e.target.value || null })) ?? "")}>
                         <option value="">Non assignée</option>
+                        {task.assigneeId && !members.some((m) => m.userId === task.assigneeId) && <option value={task.assigneeId}>Membre inactif</option>}
                         {assignable(task.assigneeId).map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
                       </select>
                       {bz("assigneeId") && <span className="fv-spin"><Spin size={14} className="ib" /></span>}
                     </>
-                  ) : task.assigneeId ? <><Avatar name="Assignée" size={24} />Assignée</> : <span className="muted">Non assignée</span>}
+                  ) : task.assigneeId ? (
+                    <><Avatar name="Assignée" size={24} />{task.assigneeId === userId ? "Vous" : "Assignée"}</>
+                  ) : canContribute ? (
+                    // Sans l'annuaire (pas de users.read), on peut quand même prendre une tâche libre.
+                    <button type="button" className="ghost" disabled={bz("assigneeId")} onClick={async () => setErr((await onChangeTask(task, { assigneeId: userId })) ?? "")}>
+                      {bz("assigneeId") ? "Attribution…" : "Me l’attribuer"}
+                    </button>
+                  ) : <span className="muted">Non assignée</span>}
                 </span>
               </div>
               <div className="frow">
@@ -467,6 +485,12 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 <span className="fv">
                   <DateField label="Échéance" busy={bz("dueDate")} value={task.dueDate} late={isLate(task)} placeholder="Définir" onChange={async (dueDate) => setErr((await onChangeTask(task, { dueDate })) ?? "")} />
                   {isLate(task) && <span className="late small">en retard</span>}
+                  {/* Dates hors de celles qui l'englobent : on signale, sans bloquer (un report peut être voulu). */}
+                  {task.dueDate && parent?.dueDate && task.dueDate > parent.dueDate ? (
+                    <span className="date-warn small" title={`Échéance de la tâche parente : ${shortDate(parent.dueDate)}`}>après la tâche parente</span>
+                  ) : task.dueDate && projectDue && task.dueDate > projectDue ? (
+                    <span className="date-warn small" title={`Échéance du projet : ${shortDate(projectDue)}`}>après l’échéance du projet</span>
+                  ) : null}
                 </span>
               </div>
               <div className="frow">
@@ -542,12 +566,12 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                 {subtasks.map((s) => (
                   <li key={s.id}>
                     <label>
-                      <input type="checkbox" disabled={!canEdit || isBusy(s, "stage")} aria-busy={isBusy(s, "stage") || undefined} checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
+                      <input type="checkbox" disabled={!canEditTask(s, task) || isBusy(s, "stage")} aria-busy={isBusy(s, "stage") || undefined} checked={s.status === "done"} onChange={async (e) => setErr((await onMoveTask(s, e.target.checked ? "done" : "todo")) ?? "")} />
                       <span className="bx"><Icon name="check" size={14} /></span>
                       <span className={s.status === "done" ? "done" : ""}>{s.title}</span>
                     </label>
                     {isBusy(s, "stage") && <Spin size={14} className="ib" />}
-                    {canEdit && <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>}
+                    {canDeleteTask(s) && <button type="button" className="ib2" aria-label={`Supprimer ${s.title}`} onClick={() => onRemoveSub(s)}><Icon name="trash" size={16} /></button>}
                   </li>
                 ))}
               </ul>
@@ -561,14 +585,14 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
           </div>
 
           {features.dependencies && (<div className={`tab-content ${tab === "dependencies" ? "on" : ""}`}>
-            <TaskDependencies orgId={orgId} projectId={projectId} taskId={task.id} onBusy={setChildBusy} />
+            <TaskDependencies editable={canEdit} orgId={orgId} projectId={projectId} taskId={task.id} onBusy={setChildBusy} />
           </div>)}
 
           {features.timesheets && (<div className={`tab-content ${tab === "timesheets" ? "on" : ""}`}>
-            <Timesheets orgId={orgId} projectId={projectId} taskId={task.id} members={members} onBusy={setChildBusy} />
+            <Timesheets canLog={canEdit} orgId={orgId} projectId={projectId} taskId={task.id} members={members} onBusy={setChildBusy} />
           </div>)}
 
-          <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...(canEdit ? dnd : {})}>
+          <div className={`tab-content att-zone ${tab === "attachments" ? "on" : ""} ${dragging ? "dragging" : ""}`} {...(canContribute ? dnd : {})}>
             {files && files.length > 0 && (
               <ul className="fl">
                 {files.map((f) => {
@@ -582,7 +606,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                         <span className="fs">{fileSize(f.size)}{canAssign && f.uploadedBy ? ` · ${nameOf(f.uploadedBy)}` : ""}</span>
                       </div>
                       <button type="button" className="ib2" aria-label={`Télécharger ${f.fileName}`} onClick={() => openFile(f)}><Icon name="download" size={16} /></button>
-                      {canEdit && f.canDelete && <button type="button" className="ib2" aria-label={`Supprimer ${f.fileName}`} onClick={() => removeFile(f)}><Icon name="trash" size={16} /></button>}
+                      {canContribute && f.canDelete && <button type="button" className="ib2" aria-label={`Supprimer ${f.fileName}`} onClick={() => removeFile(f)}><Icon name="trash" size={16} /></button>}
                     </li>
                   );
                 })}
@@ -590,7 +614,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
             )}
             {files && files.length === 0 && <div className="empty-tab"><Icon name="clip" size={22} /><b>Aucune pièce jointe</b><span>Ajoutez des documents, images ou maquettes.</span></div>}
             {!files && !err && <RowsSkeleton rows={2} h={64} label="Chargement des pièces jointes" />}
-            {!canEdit ? null : (files?.length ?? 0) < MAX_FILES ? (
+            {!canContribute ? null : (files?.length ?? 0) < MAX_FILES ? (
               <label className={`drop ${uploading ? "busy" : ""} ${dragging ? "over" : ""}`}>
                 <input type="file" multiple disabled={uploading} onChange={onPickFiles} aria-label="Ajouter des fichiers" />
                 {uploading ? <Spin size={22} /> : <Icon name="clip" size={18} />}
@@ -647,7 +671,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                     <button
                       type="button"
                       className={`ta-check ${a.done ? "on" : ""}`}
-                      disabled={!canEdit || inst.busy(a.id)}
+                      disabled={!mineActivity(a) || inst.busy(a.id)}
                       aria-busy={inst.busy(a.id) || undefined}
                       role="checkbox"
                       aria-checked={a.done}
@@ -664,7 +688,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                       </div>
                     </div>
                     {a.assigneeId ? <Avatar name={nameOf(a.assigneeId)} size={28} /> : <Avatar name="" size={28} />}
-                    {canEdit && <button type="button" className="icon-btn ta-del" aria-label="Supprimer l'activité" onClick={() => removeActivity(a)}><Icon name="trash" size={16} /></button>}
+                    {mineActivity(a) && <button type="button" className="icon-btn ta-del" aria-label="Supprimer l'activité" onClick={() => removeActivity(a)}><Icon name="trash" size={16} /></button>}
                   </li>
                 );
               })}
@@ -684,7 +708,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
         <aside className="tp-chat" aria-label="Discussion">
         <h3>Discussion {comments && <span className="tc-count">{comments.length}</span>}</h3>
         {err && <p className="error" style={{ padding: 0 }}>{err}</p>}
-        {canEdit && <form onSubmit={send} className="composer">
+        {canComment && <form onSubmit={send} className="composer">
           <textarea ref={composerRef} rows={2} placeholder="Écrire un commentaire… (@ pour mentionner)" aria-label="Écrire un commentaire" aria-autocomplete="list" aria-expanded={suggestions.length > 0} value={text} maxLength={4000} onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart); setSugIndex(0); }} onSelect={(e) => setCaret(e.target.selectionStart)} onKeyDown={onComposerKey} />
           {suggestions.length > 0 && (
             <ul className="mention-list" role="listbox" aria-label="Mentionner un membre">
@@ -713,7 +737,7 @@ export default function TaskDetail({ orgId, projectId, projectName, task, stages
                     <header>
                       <strong>{nameOf(c.authorId)}</strong>
                       <span className="muted small">{hour(c.createdAt)}</span>
-                      {canEdit && c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
+                      {canComment && c.canDelete && <button type="button" className="icon-btn tc-del" aria-label="Supprimer le commentaire" onClick={() => remove(c)}><Icon name="trash" size={14} /></button>}
                     </header>
                     <p className="comment-body">{withMentions(c.body, members)}</p>
                   </div>

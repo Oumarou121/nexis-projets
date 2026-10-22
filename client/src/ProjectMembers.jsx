@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
-import { usePerms } from "./perms.js";
+import { ROLE_HINTS, ROLE_LABELS, usePerms } from "./perms.js";
 import { Avatar, Icon } from "./ui.jsx";
 import { memberName } from "./labels.js";
 import "./members.css";
@@ -10,16 +10,18 @@ const when = (iso) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "n
 
 /**
  * Onglet « Membres » des paramètres du projet.
- * Les membres limitent l'accès uniquement quand le projet est privé : un projet interne n'affiche
- * qu'une ligne « tous les utilisateurs de l'organisation », sans liste (les membres enregistrés sont
- * conservés côté serveur et réapparaissent si le projet repasse en privé).
+ * Chaque membre a un RÔLE DANS LE PROJET (responsable, contributeur, observateur) ; son rôle effectif est le plus
+ * élevé entre celui-ci et celui que lui donne l'organisation. Dans un projet privé, être membre ouvre aussi l'accès ;
+ * dans un projet interne, tout le monde y accède déjà selon son rôle d'organisation.
  * `people` = membres de l'organisation (noms) ; `canList` = droit de les lister dans NEXIS Identity.
  */
+const ROLES = ["manager", "contributor", "viewer"];
 export default function ProjectMembers({ orgId, project, people, canList, onChange, onLeave, onBusy }) {
-  const { canEdit } = usePerms();
+  const { canManage } = usePerms();
   const url = `/api/organizations/${orgId}/projects/${project.id}/members`;
   const [data, setData] = useState(null); // { visibility, me, members, assigneesWithoutAccess }
   const [pick, setPick] = useState("");
+  const [pickRole, setPickRole] = useState("contributor");
   const [busy, setBusy] = useState(false);
   useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]); // verrouille la fermeture du modal parent
   const [err, setErr] = useState("");
@@ -46,8 +48,37 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
     if (!userId) return;
     setBusy(true);
     try {
-      await api(url, "POST", { userId });
+      await api(url, "POST", { userId, role: pickRole });
       setPick("");
+      setPickRole("contributor");
+      setErr("");
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeRole(m, role) {
+    if (role === m.role) return;
+    const self = m.userId === data.me;
+    // Dernier responsable nommé, ou soi-même : on prévient (les administrateurs restent responsables de tout).
+    const lastManager = m.role === "manager" && rows.filter((x) => x.role === "manager").length === 1;
+    if (self || lastManager) {
+      const ok = await confirmDialog({
+        tone: "warn", icon: "user",
+        title: self ? "Changer votre propre rôle ?" : "Retirer le dernier responsable nommé ?",
+        text: self
+          ? "Vous pourriez ne plus pouvoir gérer ce projet (sauf si votre rôle dans l'organisation vous le permet)."
+          : "Plus personne ne sera responsable de ce projet en particulier ; seuls les administrateurs de l'organisation pourront le gérer.",
+        ok: "Changer le rôle",
+      });
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await api(`${url}/${m.userId}`, "PATCH", { role });
       setErr("");
       await load();
     } catch (e) {
@@ -66,7 +97,22 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
     await confirmDialog({
       ...cfg,
       run: async () => {
-        await api(`${url}/${userId}`, "DELETE");
+        try {
+          await api(`${url}/${userId}`, "DELETE");
+        } catch (e) {
+          if (e.status !== 409 || !e.data?.openTasks) throw e;
+          // Des tâches en cours : on demande quoi en faire (il ne les verra plus dans un projet privé).
+          const n = e.data.openTasks;
+          const choice = await confirmDialog({
+            tone: "warn", icon: "user",
+            title: `${label(userId)} a ${n} tâche${n > 1 ? "s" : ""} en cours`,
+            text: "Il ne pourra plus les voir une fois retiré de ce projet privé.",
+            select: { label: "Que faire de ces tâches ?", options: [{ value: "unassign", label: "Les désassigner (à réattribuer)" }, { value: "keep", label: "Les laisser à son nom (signalées)" }] },
+            ok: "Retirer",
+          });
+          if (!choice) return;
+          await api(`${url}/${userId}?${choice === "unassign" ? "unassign" : "keep"}=1`, "DELETE");
+        }
         setErr("");
         if (self && isPrivate) return onLeave?.();
         await load();
@@ -86,38 +132,25 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
             <div key={id} className="pm-row">
               <Avatar member={person(id)} size={26} />
               <span className="pm-who"><strong>{label(id)}</strong></span>
-              {canEdit && canList && <button type="button" className="ghost" disabled={busy} onClick={() => add(id)}>Ajouter au projet</button>}
+              {canManage && canList && <button type="button" className="ghost" disabled={busy} onClick={() => add(id)}>Ajouter au projet</button>}
             </div>
           ))}
         </div>
       )}
 
-      {!isPrivate ? (
-        // Projet interne : l'accès ne dépend pas des membres. Une seule ligne, sans liste ni ajout.
-        <section className="set-box">
-          <h5 className="set-h">Accès au projet</h5>
-          <ul className="pm-list">
-            <li className="pm-row">
-              <span className="pm-all" aria-hidden="true"><Icon name="users" size={16} /></span>
-              <span className="pm-who">
-                <strong>Tous les utilisateurs de l'organisation</strong>
-                <small>Ayant accès aux projets</small>
-              </span>
-            </li>
-          </ul>
-          <p className="pm-note" style={{ margin: "12px 0 0" }}>
-            Ce projet est <b>interne</b>. La liste des membres n'apparaît que s'il est <b>privé</b> : seuls ses membres, les responsables et les administrateurs de la plateforme pourront alors le voir.
-          </p>
-        </section>
-      ) : (
       <section className="set-box">
         <h5 className="set-h">Membres du projet{data ? ` (${rows.length})` : ""}</h5>
         <p className="pm-note">
-          Ce projet est <b>privé</b> : seuls ses membres, les responsables (droit de suppression des projets) et les administrateurs de la plateforme peuvent le voir.
+          {isPrivate ? (
+            <>Ce projet est <b>privé</b> : seuls ses membres et les administrateurs de l'organisation peuvent le voir.</>
+          ) : (
+            <>Ce projet est <b>interne</b> : toute l'organisation y accède selon son rôle (contributeur, ou observateur pour la lecture seule). Les membres ci-dessous y ont un rôle propre, par exemple <b>responsable</b>.</>
+          )}{" "}
+          Un membre garde toujours le plus élevé de ses deux rôles : celui de l'organisation et celui du projet.
         </p>
         {!data && !err && <p className="muted small">Chargement…</p>}
         {data && rows.length === 0 && (
-          <div className="set-empty"><strong>Aucun membre</strong><span>Seuls les responsables voient ce projet.</span></div>
+          <div className="set-empty"><strong>Aucun membre</strong><span>{isPrivate ? "Seuls les administrateurs voient ce projet." : "Personne n'a de rôle particulier dans ce projet."}</span></div>
         )}
         <ul className="pm-list">
           {rows.map((m) => (
@@ -127,7 +160,14 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
                 <strong>{label(m.userId)}{m.userId === data.me && <span className="pm-you">Vous</span>}</strong>
                 <small>{person(m.userId)?.email ? `${person(m.userId).email} · ` : ""}ajouté le {when(m.createdAt)}</small>
               </span>
-              {canEdit && (
+              {canManage ? (
+                <select aria-label={`Rôle de ${label(m.userId)} dans le projet`} value={m.role ?? "contributor"} disabled={busy} title={ROLE_HINTS[m.role ?? "contributor"]} onChange={(e) => changeRole(m, e.target.value)}>
+                  {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                </select>
+              ) : (
+                <span className="muted small" title={ROLE_HINTS[m.role ?? "contributor"]}>{ROLE_LABELS[m.role ?? "contributor"]}</span>
+              )}
+              {canManage && (
                 <button type="button" className="icon-btn" aria-label={`Retirer ${label(m.userId)}`} disabled={busy} onClick={() => remove(m.userId)}>
                   <Icon name="close" size={16} />
                 </button>
@@ -136,11 +176,14 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
           ))}
         </ul>
 
-        {canEdit && (canList ? (
+        {canManage && (canList ? (
           <div className="pm-add">
             <select aria-label="Ajouter un membre" value={pick} disabled={busy || candidates.length === 0} onChange={(e) => setPick(e.target.value)}>
               <option value="">{candidates.length === 0 ? "Tous les utilisateurs sont déjà membres" : "Choisir une personne…"}</option>
               {candidates.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
+            </select>
+            <select aria-label="Rôle dans le projet" value={pickRole} disabled={busy} title={ROLE_HINTS[pickRole]} onChange={(e) => setPickRole(e.target.value)}>
+              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
             <button type="button" disabled={busy || !pick} onClick={() => add(pick)}>Ajouter</button>
           </div>
@@ -148,7 +191,6 @@ export default function ProjectMembers({ orgId, project, people, canList, onChan
           <p className="muted small" style={{ margin: "12px 0 0" }}>Vous n'avez pas le droit de lister les utilisateurs de l'organisation : impossible d'en ajouter d'ici.</p>
         ))}
       </section>
-      )}
     </>
   );
 }

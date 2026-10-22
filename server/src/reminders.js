@@ -1,4 +1,5 @@
-import { clip } from "./util.js";
+import { clip, isOpenProject } from "./util.js";
+import { addDays, serverToday } from "./dates.js";
 import { db } from "./db.js";
 import { notify } from "./notifications.js";
 
@@ -8,9 +9,9 @@ import { notify } from "./notifications.js";
 // Seul l'ASSIGNÉ est prévenu, et notify() applique ses règles habituelles (projet privé : membres seulement).
 // E-mail : un rappel automatique n'a pas d'appelant ; l'adresse est retrouvée chez NEXIS Identity en
 // serveur à serveur (IDENTITY_MODULE_KEY). Sans cette clé, seule la cloche est alimentée.
-// Les dates sont en UTC. Une seule instance du serveur doit lancer ces passes (sinon doublons possibles).
+// « Aujourd'hui » suit APP_TZ (à défaut DIGEST_TZ, sinon UTC), comme le résumé et les écrans. Projets terminés ou en
+// pause : aucun rappel. Une seule instance du serveur doit lancer ces passes (sinon doublons possibles).
 const DAY = 86_400_000;
-const iso = (d) => d.toISOString().slice(0, 10);
 const fr = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
 const MAX_LATE_DAYS = 30; // au-delà, on ne relance plus : la tâche est abandonnée ou oubliée de toute façon
 
@@ -18,9 +19,9 @@ const MAX_LATE_DAYS = 30; // au-delà, on ne relance plus : la tâche est abando
 export async function runDueReminders(now = new Date()) {
   let created = 0;
   try {
-    const today = iso(now);
-    const tomorrow = iso(new Date(now.getTime() + DAY));
-    const oldest = iso(new Date(now.getTime() - MAX_LATE_DAYS * DAY));
+    const today = serverToday(now);
+    const tomorrow = addDays(today, 1);
+    const oldest = addDays(today, -MAX_LATE_DAYS);
     const { data: tasks, error } = await db
       .from("tasks")
       .select("id, title, assignee_id, due_date, project_id, status, is_milestone")
@@ -32,9 +33,10 @@ export async function runDueReminders(now = new Date()) {
     const todo = (tasks ?? []).filter((t) => t.assignee_id && !t.is_milestone);
     if (todo.length === 0) return 0;
 
-    const { data: projects } = await db.from("projects").select("id, organization_id, name").in("id", [...new Set(todo.map((t) => t.project_id))]);
-    const orgOf = new Map((projects ?? []).map((p) => [p.id, p.organization_id]));
-    const nameOf = new Map((projects ?? []).map((p) => [p.id, p.name]));
+    const { data: all } = await db.from("projects").select("id, organization_id, name, status").in("id", [...new Set(todo.map((t) => t.project_id))]);
+    const projects = (all ?? []).filter((p) => isOpenProject(p.status));
+    const orgOf = new Map(projects.map((p) => [p.id, p.organization_id]));
+    const nameOf = new Map(projects.map((p) => [p.id, p.name]));
 
     for (const t of todo) {
       const orgId = orgOf.get(t.project_id);

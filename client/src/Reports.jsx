@@ -207,14 +207,16 @@ export default function Reports({ tasks, members }) {
     );
   })();
 
+  // Indicateurs : mêmes règles que la page Projets (tâches principales, jalons exclus : ce sont des repères).
+  const work = tasks.filter((t) => !t.isMilestone);
   return (
     <>
       <div className="rp-kpis">
         {[
-          ["Tâches", tasks.length, "list", ""],
-          ["Terminées", `${tasks.length ? Math.round((tasks.filter((t) => t.status === "done").length / tasks.length) * 100) : 0} %`, "check", "ok"],
-          ["En retard", tasks.filter(isLate).length, "clock", tasks.filter(isLate).length ? "bad" : ""],
-          ["Non assignées", tasks.filter((t) => !t.assigneeId).length, "flag", ""],
+          ["Tâches", work.length, "list", ""],
+          ["Terminées", `${work.length ? Math.round((work.filter((t) => t.status === "done").length / work.length) * 100) : 0} %`, "check", "ok"],
+          ["En retard", work.filter(isLate).length, "clock", work.filter(isLate).length ? "bad" : ""],
+          ["Non assignées", work.filter((t) => !t.assigneeId).length, "flag", ""],
         ].map(([label, value, icon, tone]) => (
           <div key={label} className={`rp-kpi ${tone}`}><span className="rp-ico"><Icon name={icon} size={18} /></span><div><b>{value}</b><span>{label}</span></div></div>
         ))}

@@ -34,7 +34,8 @@ function QuickAdd({ onAdd, onCancel }) {
  * Tableau Kanban à la Odoo : colonnes sans fond, cartes plates collées, bande de couleur à gauche.
  * Au tactile (pas de glisser-déposer HTML5), la pastille de statut de chaque carte ouvre un menu.
  */
-export default function Kanban({ tasks, stages, members, canAssign, onMove, onChange, onRemove, onOpen, onSidebar, onQuickAdd, subStats, isBusy = () => false }) {
+// canEditTask / canDeleteTask : droits sur chaque tâche (un contributeur ne déplace que ses tâches).
+export default function Kanban({ tasks, stages, members, canAssign, onMove, onChange, onRemove, onOpen, onSidebar, onQuickAdd, subStats, isBusy = () => false, canEditTask = () => true, canDeleteTask = () => true }) {
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
   const [adding, setAdding] = useState(null);
@@ -49,7 +50,7 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
     const task = tasks.find((t) => t.id === id);
     setDragId(null);
     setOverCol(null);
-    if (task) onMove(task, status);
+    if (task && canEditTask(task)) onMove(task, status);
   }
 
   return (
@@ -86,16 +87,17 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                   <article
                     key={t.id}
                     className={`kcard p-${t.priority} ${t.status === "done" ? "is-done" : ""} ${dragId === t.id ? "dragging" : ""} ${isBusy(t, "*") ? "is-busy" : ""}`}
-                    draggable={!!onMove && !isBusy(t, "stage")}
+                    draggable={!!onMove && canEditTask(t) && !isBusy(t, "stage")}
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id); }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
                   >
                     {t.labels?.length > 0 && <LabelChips labels={t.labels} />}
+                    {t.reassignRequestedBy && <span className="ra-badge" title="L’assigné demande que la tâche soit confiée à quelqu’un d’autre"><Icon name="users" size={12} />Réassignation demandée</span>}
                     <div className="kt">
                       <button className="ktitle" onClick={() => onOpen(t)}>
                         <span className={t.status === "done" ? "done" : ""}>{t.title}</span>
                       </button>
-                      <PriorityStar priority={t.priority} busy={isBusy(t, "priority")} onChange={(priority) => onChange(t, { priority })} />
+                      <PriorityStar editable={canEditTask(t)} priority={t.priority} busy={isBusy(t, "priority")} onChange={(priority) => onChange(t, { priority })} />
                       <Menu
                         className="k-menu"
                         label={`Actions pour ${t.title}`}
@@ -103,7 +105,7 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                         items={[
                           { label: "Ouvrir", icon: "expand", onClick: () => onOpen(t) },
                           { label: "Aperçu rapide", icon: "list", onClick: () => onSidebar?.(t) },
-                          ...(onRemove ? [{ label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) }] : []),
+                          ...(onRemove && canDeleteTask(t) ? [{ label: "Supprimer", icon: "trash", danger: true, onClick: () => onRemove(t) }] : []),
                         ]}
                       />
                     </div>
@@ -123,7 +125,7 @@ export default function Kanban({ tasks, stages, members, canAssign, onMove, onCh
                         {t.assigneeId && (canAssign
                           ? <Avatar member={member} name={member ? undefined : "Ancien membre"} size={26} />
                           : <Avatar name="Assignée" size={26} title="Assignée" />)}
-                        <StatusPill compact busy={isBusy(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => onMove(t, s)} />
+                        <StatusPill compact editable={canEditTask(t)} busy={isBusy(t, "stage")} stages={stages} stageId={t.stageId} status={t.status} onChange={(s) => onMove(t, s)} />
                       </div>
                     </div>
                   </article>

@@ -49,7 +49,8 @@ Testé avec Node 22 ; Express 5 et jose 6 demandent une version récente, évite
 | `APP_URL` | URL publique du client, sans slash final : lien des e-mails de notification **et** des invitations d'invités externes (obligatoire pour inviter) |
 | `RESEND_API_KEY`, `MAIL_FROM` | E-mails (section 6). Sans eux, les e-mails sont seulement écrits dans la console |
 | `IDENTITY_MODULE_KEY` | Clé serveur-à-serveur, **identique** à l'entrée `projets:` de `MODULE_API_KEYS` chez Identity (section 6). Sans elle : ni rappels par e-mail, ni résumé quotidien |
-| `DIGEST_HOUR`, `DIGEST_TZ` | Heure (0-23, 8 par défaut) et fuseau IANA du résumé quotidien, ex. `Africa/Tunis`. Sans `DIGEST_TZ` : UTC |
+| `APP_TZ` | Fuseau IANA de « aujourd’hui » pour les rappels et le résumé (et pour les écrans si le navigateur n’envoie pas sa date), ex. `Europe/Paris`. À défaut `DIGEST_TZ`, sinon UTC |
+| `DIGEST_HOUR`, `DIGEST_TZ` | Heure (0-23, 8 par défaut) du résumé quotidien ; `DIGEST_TZ` reste accepté comme fuseau si `APP_TZ` est absent |
 | `FIREBASE_SERVICE_ACCOUNT` ou `FIREBASE_SERVICE_ACCOUNT_FILE` | Clé de compte de service Firebase (secret) : active le push. Sans elle, le push est désactivé |
 | `TRUST_PROXY` | `1` derrière un proxy (Render, Nginx, Cloudflare…), sinon la limitation de débit du portail des invités voit l'IP du proxy |
 | `REMINDERS=off`, `DAILY_DIGEST=off` | Facultatif : coupent les rappels d'échéance / le résumé (utile sur les instances secondaires) |

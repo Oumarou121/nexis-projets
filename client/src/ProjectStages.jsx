@@ -34,7 +34,8 @@ const MAX = 12;
  * l'organisation ne s'applique qu'aux NOUVEAUX projets (ce projet garde ses étapes).
  */
 export default function ProjectStages({ orgId, project, stages, onChange, onBusy }) {
-  const { canEdit, canCreate } = usePerms();
+  const { canManage, canCreate: canCreateProjects } = usePerms();
+  const canCreate = canCreateProjects && canManage; // modèle d'étapes de l'organisation : gestionnaire qui crée des projets
   const base = `/api/organizations/${orgId}/projects/${project.id}/stages`;
   const tplBase = `/api/organizations/${orgId}/stage-template`;
   const [list, setList] = useState(stages ?? []);
@@ -137,8 +138,8 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
       <ol className="st-list">
         {list.map((s, i) => (
           <li key={s.id} className="st-row">
-            <ColorPicker stage={s} disabled={!canEdit || busy} onPick={(c) => recolor(s, c)} />
-            {canEdit ? (
+            <ColorPicker stage={s} disabled={!canManage || busy} onPick={(c) => recolor(s, c)} />
+            {canManage ? (
               <input
                 key={`${s.id}-${s.name}`}
                 className="st-name"
@@ -152,11 +153,11 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
             ) : (
               <b className="st-name-ro">{s.name}</b>
             )}
-            <select aria-label={`Catégorie de ${s.name}`} value={s.category} disabled={!canEdit || busy} onChange={(e) => recategorize(s, e.target.value)}>
+            <select aria-label={`Catégorie de ${s.name}`} value={s.category} disabled={!canManage || busy} onChange={(e) => recategorize(s, e.target.value)}>
               {CATEGORIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
             <span className="st-count" title="Tâches dans cette étape">{busyId === s.id && <Spin size={14} className="ib" />} {s.taskCount ?? 0} tâche{(s.taskCount ?? 0) > 1 ? "s" : ""}</span>
-            {canEdit && (
+            {canManage && (
               <span className="st-acts">
                 <button type="button" className="icon-btn" aria-label={`Monter ${s.name}`} disabled={busy || i === 0} onClick={() => shift(i, -1)}>↑</button>
                 <button type="button" className="icon-btn" aria-label={`Descendre ${s.name}`} disabled={busy || i === list.length - 1} onClick={() => shift(i, 1)}>↓</button>
@@ -167,7 +168,7 @@ export default function ProjectStages({ orgId, project, stages, onChange, onBusy
         ))}
       </ol>
 
-      {canEdit && (
+      {canManage && (
         <form className="st-add" onSubmit={add}>
           <ColorPicker stage={{ name: "nouvelle étape", category, color }} disabled={busy || list.length >= MAX} onPick={setColor} />
           <input aria-label="Nom de la nouvelle étape" placeholder={list.length >= MAX ? `${MAX} étapes au maximum` : "Nouvelle étape (ex. En attente client)"} maxLength={30} value={name} onChange={(e) => setName(e.target.value)} disabled={busy || list.length >= MAX} />

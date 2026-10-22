@@ -2,9 +2,12 @@ import { Router } from "express";
 import { db } from "../db.js";
 import { UUID_RE, httpError, requirePermission } from "../auth.js";
 import { DATE_RE, assertProject, assertTask, unwrap } from "../util.js";
+import { assertCanEditTask, isManager, loadTask, requireRole } from "../access.js";
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/tasks/:taskId/activities.
-// Droits : lecture = projects.read ; créer / modifier / supprimer = projects.update.
+// Droits : lecture = projects.read. Créer : sur ses tâches (ou gestionnaire), assignée à soi ou à personne
+// (un gestionnaire peut l'assigner à quelqu'un d'autre). Modifier / supprimer : son créateur, la personne
+// à qui elle est assignée, ou un gestionnaire.
 const TYPES = ["todo", "call", "email", "meeting", "note"];
 const COLS = "id, task_id, type, summary, due_date, assignee_id, done, created_by, created_at, updated_at";
 
@@ -48,6 +51,21 @@ function parse(body, { partial }) {
   return out;
 }
 
+/** Un contributeur ne confie pas une activité à quelqu'un d'autre. */
+async function assertActivityAssignee(req, f) {
+  if (f.assignee_id && f.assignee_id !== req.auth.userId && !(await isManager(req))) {
+    throw httpError(403, "Seul un gestionnaire peut confier une activité à quelqu’un d’autre.");
+  }
+}
+
+/** Activité : modifiable par son créateur, son assigné ou un gestionnaire. */
+async function assertActivityOwner(req) {
+  const row = unwrap(await db.from("task_activities").select("created_by, assignee_id").eq("id", req.params.id).eq("task_id", req.params.taskId).maybeSingle());
+  if (!row) throw httpError(404, "Activité introuvable.");
+  const mine = row.created_by === req.auth.userId || row.assignee_id === req.auth.userId;
+  if (!mine && !(await isManager(req))) throw httpError(403, "Vous ne pouvez modifier que vos activités.");
+}
+
 const router = Router({ mergeParams: true });
 
 router.get("/", requirePermission("projects.read"), async (req, res) => {
@@ -63,10 +81,11 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   res.json(rows.map(toApi));
 });
 
-router.post("/", requirePermission("projects.update"), async (req, res) => {
+router.post("/", requireRole("contributor"), async (req, res) => {
   const f = parse(req.body, { partial: false });
   await assertProject(req.params);
-  await assertTask(req.params.taskId, req.params.projectId);
+  await assertCanEditTask(req, await loadTask(req, req.params.taskId));
+  await assertActivityAssignee(req, f);
   const row = unwrap(
     await db
       .from("task_activities")
@@ -77,12 +96,14 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
   res.status(201).json(toApi(row));
 });
 
-router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
+router.patch("/:id", requireRole("contributor"), async (req, res) => {
   const f = parse(req.body, { partial: true });
   if (Object.keys(f).length === 0) throw httpError(400, "Aucune modification.");
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Activité introuvable.");
   await assertProject(req.params);
   await assertTask(req.params.taskId, req.params.projectId);
+  await assertActivityOwner(req);
+  await assertActivityAssignee(req, f);
   const row = unwrap(
     await db
       .from("task_activities")
@@ -96,10 +117,11 @@ router.patch("/:id", requirePermission("projects.update"), async (req, res) => {
   res.json(toApi(row));
 });
 
-router.delete("/:id", requirePermission("projects.update"), async (req, res) => {
+router.delete("/:id", requireRole("contributor"), async (req, res) => {
   if (!UUID_RE.test(req.params.id)) throw httpError(404, "Activité introuvable.");
   await assertProject(req.params);
   await assertTask(req.params.taskId, req.params.projectId);
+  await assertActivityOwner(req);
   const rows = unwrap(
     await db
       .from("task_activities")

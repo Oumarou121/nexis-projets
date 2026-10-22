@@ -3,12 +3,14 @@ import { createHash, randomBytes } from "node:crypto";
 import { db } from "../db.js";
 import { UUID_RE, httpError, listOrgMembers, requirePermission } from "../auth.js";
 import { unwrap } from "../util.js";
+import { assertManager } from "../access.js";
 import { logActivity } from "../activity.js";
 import { isEmail, sendMail } from "../mail.js";
 import { buildGuestInvite } from "../emailTemplates.js";
 
 // Gestion des invités d'un projet « public ». Monté sous .../projects/:projectId/guests, derrière
-// projectGuard. Tout est réservé à projects.update : les adresses des invités sont des données personnelles.
+// projectGuard. Tout est réservé aux gestionnaires : ouvrir le projet à l'extérieur relève de sa gestion,
+// et les adresses des invités sont des données personnelles.
 // Le jeton d'invitation n'est jamais renvoyé par les listes et n'est jamais stocké en clair.
 
 export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/; // 32 octets en base64url
@@ -96,7 +98,14 @@ async function issue(req, email, days) {
 }
 
 const router = Router({ mergeParams: true });
-router.use(requirePermission("projects.update"));
+router.use(async (req, _res, next) => {
+  try {
+    await assertManager(req, "Seul un responsable du projet peut gérer ses invités.");
+    next();
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get("/", async (req, res) => {
   const rows = unwrap(await db.from("project_guests").select(COLS).eq("project_id", req.params.projectId).order("created_at", { ascending: true }));

@@ -2,47 +2,34 @@ import { db } from "./db.js";
 import { lookupMemberEmail, serviceEmailEnabled } from "./auth.js";
 import { sendMail } from "./mail.js";
 import { digestHtml, taskUrl } from "./emailTemplates.js";
+import { isOpenProject } from "./util.js";
+import { addDays, appTz, localTime } from "./dates.js";
+
+export { localTime };
 
 // Résumé quotidien par e-mail : une fois par jour, à chaque personne qui a des tâches à suivre, ses tâches
 // ASSIGNÉES en retard, pour aujourd'hui et des 3 prochains jours. Rien à signaler : pas d'e-mail.
 //   DIGEST_HOUR   : heure locale d'envoi, 0-23 (8 par défaut). Si le serveur était arrêté, l'envoi a encore
 //                   lieu pendant les 4 heures qui suivent ; au-delà, la journée est sautée.
-//   DIGEST_TZ     : fuseau IANA de cette heure et de « aujourd'hui », ex. Africa/Tunis (UTC par défaut).
+//   APP_TZ        : fuseau IANA de cette heure et de « aujourd'hui », ex. Africa/Tunis (à défaut DIGEST_TZ, sinon UTC),
+//                   le même que pour les rappels (dates.js). Projets terminés ou en pause : rien dans le résumé.
 //   DAILY_DIGEST  : « off » désactive le résumé.
 // Pas d'appelant : l'adresse est demandée à NEXIS Identity en serveur à serveur (IDENTITY_MODULE_KEY). Sans cette
 // clé, rien n'est envoyé. Mêmes règles de visibilité que notify() : un projet privé n'apparaît que chez ses membres.
 // Un seul envoi par personne, organisation et jour : la ligne digest_log est « réservée » AVANT l'envoi (clé
 // primaire = verrou) et libérée si l'envoi échoue, pour qu'une passe suivante réessaie.
-const DAY = 86_400_000;
 const MAX_LATE_DAYS = 30; // comme les rappels : au-delà, la tâche est abandonnée ou oubliée
 const AHEAD_DAYS = 3;
 const WINDOW_HOURS = 4;
 const MAX_PER_SECTION = 10;
 
-const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const fr = (day) => new Date(`${day}T00:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
 
 function config() {
-  let tz = (process.env.DIGEST_TZ ?? "").trim() || "UTC";
-  try {
-    new Intl.DateTimeFormat("fr-FR", { timeZone: tz });
-  } catch {
-    console.warn(`[digest] fuseau inconnu « ${tz} » : UTC utilisé.`);
-    tz = "UTC";
-  }
+  const tz = appTz();
   const raw = (process.env.DIGEST_HOUR ?? "").trim();
   const h = raw === "" ? NaN : Number(raw);
   return { tz, hour: Number.isInteger(h) && h >= 0 && h <= 23 ? h : 8 };
-}
-
-/** Date (AAAA-MM-JJ) et heure locales d'un instant, dans le fuseau donné. */
-export function localTime(now, tz) {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" })
-      .formatToParts(now)
-      .map((x) => [x.type, x.value]),
-  );
-  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) };
 }
 
 /** Gabarit : objet, texte et HTML. Les titres viennent des utilisateurs : échappés dans le HTML. */
@@ -128,7 +115,7 @@ export async function runDailyDigests(now = new Date()) {
 
     const { data: projects } = await db
       .from("projects")
-      .select("id, name, organization_id, visibility")
+      .select("id, name, organization_id, visibility, status")
       .in("id", [...new Set(todo.map((t) => t.project_id))]);
     const projectOf = new Map((projects ?? []).map((p) => [p.id, p]));
     const privateIds = (projects ?? []).filter((p) => p.visibility === "private").map((p) => p.id);
@@ -142,7 +129,7 @@ export async function runDailyDigests(now = new Date()) {
     const groups = new Map();
     for (const t of todo) {
       const p = projectOf.get(t.project_id);
-      if (!p) continue;
+      if (!p || !isOpenProject(p.status)) continue;
       if (p.visibility === "private" && !members.has(`${p.id}:${t.assignee_id}`)) continue;
       const key = `${p.organization_id}:${t.assignee_id}`;
       if (!groups.has(key)) groups.set(key, { orgId: p.organization_id, userId: t.assignee_id, late: [], dueToday: [], soon: [] });

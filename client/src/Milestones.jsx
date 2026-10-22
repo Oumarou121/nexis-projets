@@ -16,7 +16,7 @@ function relDue(d) {
 
 /** Liste des jalons du projet (tâches marquées « jalon ») avec leur avancement global. */
 export default function Milestones({ orgId, projectId, tasks, onOpen, onChange, onBusy }) {
-  const { canEdit } = usePerms();
+  const { canEditTask } = usePerms(); // retirer des jalons = modifier la tâche
   const [pending, setPending] = useState(null); // id du jalon en cours de modification
   const [err, setErr] = useState("");
   useEffect(() => { onBusy?.(pending !== null); return () => onBusy?.(false); }, [pending, onBusy]);
@@ -79,7 +79,7 @@ export default function Milestones({ orgId, projectId, tasks, onOpen, onChange, 
                       ) : <span className="muted">Sans échéance</span>}
                     </span>
                   </div>
-                  {canEdit && <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} disabled={!!pending} onClick={() => toggleMilestone(m)}>{pending === m.id ? <Spin size={15} /> : <Icon name="close" size={15} />}</button>}
+                  {canEditTask(m) && <button type="button" className="icon-btn" title="Retirer des jalons" aria-label={`Retirer « ${m.title} » des jalons`} disabled={!!pending} onClick={() => toggleMilestone(m)}>{pending === m.id ? <Spin size={15} /> : <Icon name="close" size={15} />}</button>}
                 </div>
               </li>
             );

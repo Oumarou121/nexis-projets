@@ -59,7 +59,7 @@ export default function Portal({ token }) {
       document.head.appendChild(m);
     }
     if (!TOKEN_RE.test(token)) return setError({ icon: "⏳", title: "Ce lien n’est plus valide", text: "Ce lien n’est pas valide. Demandez une nouvelle invitation à la personne qui vous l’a envoyée." });
-    fetch(`${BASE}/api/portal`, { headers: { "X-Portal-Token": token } })
+    fetch(`${BASE}/api/portal`, { headers: { "X-Portal-Token": token, "X-Nexis-Today": todayISO() } })
       .then(async (res) => {
         if (res.ok) return setData(await res.json());
         setError(res.status === 429

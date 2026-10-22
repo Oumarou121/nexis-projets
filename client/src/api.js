@@ -1,4 +1,5 @@
 import { getToken, goToNexis } from "./session.js";
+import { todayISO } from "./labels.js";
 
 const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "");
 
@@ -15,7 +16,8 @@ export async function api(path, method = "GET", body) {
 
   const send = () => fetch(`${BASE}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    // X-Nexis-Today : date locale, pour que les compteurs du serveur (retards) disent la même chose que les cartes.
+    headers: { Authorization: `Bearer ${token}`, "X-Nexis-Today": todayISO(), ...(body ? { "Content-Type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   // Une lecture qui tombe sur une panne passagère du serveur (500/502/503/504) est retentée une fois, sans rien afficher.
@@ -28,7 +30,8 @@ export async function api(path, method = "GET", body) {
   if (res.status === 204) return null;
   const json = await res.json().catch(() => ({}));
   if (res.status === 401) return reauth(json.error);
-  if (!res.ok) throw new Error(json.error ?? `Erreur ${res.status}`);
+  // status et data : l'appelant peut réagir à une réponse précise (ex. 409 { openTasks } au retrait d'un membre).
+  if (!res.ok) throw Object.assign(new Error(json.error ?? `Erreur ${res.status}`), { status: res.status, data: json });
   return json;
 }
 

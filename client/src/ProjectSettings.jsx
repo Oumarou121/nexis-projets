@@ -39,7 +39,7 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
   const [tabBusy, setTabBusy] = useState(false); // action en cours dans un onglet (étapes, membres, partage)
   const anyBusy = saving || tabBusy;
   useEffect(() => { onBusy?.(anyBusy); return () => onBusy?.(false); }, [anyBusy, onBusy]);
-  const { canEdit } = usePerms();
+  const { canManage } = usePerms();
   const [err, setErr] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -151,14 +151,14 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
             {notice && <p className="muted small" role="status" style={{ padding: 0, color: "var(--warn)" }}>{notice}</p>}
             <section className="set-box">
               <h5 className="set-h">Couleur du projet</h5>
-              <ColorPicker name="set-color" disabled={saving || !canEdit} value={colorIdx} onChange={saveColor} />
+              <ColorPicker name="set-color" disabled={saving || !canManage} value={colorIdx} onChange={saveColor} />
             </section>
             <section className="set-box">
               <h5 className="set-h">Visibilité</h5>
               <div className="set-cards" role="radiogroup" aria-label="Visibilité">
                 {VISIBILITY.map(([v, label, hint, available]) => (
                   <label key={v} className={`set-card ${available ? "" : "is-off"}`}>
-                    <input type="radio" name="visibility" value={v} checked={visibility === v} disabled={saving || !canEdit || !available} onChange={() => saveVisibility(v)} />
+                    <input type="radio" name="visibility" value={v} checked={visibility === v} disabled={saving || !canManage || !available} onChange={() => saveVisibility(v)} />
                     <span><b>{label}</b><small>{hint}</small></span>
                   </label>
                 ))}
@@ -178,13 +178,13 @@ export default function ProjectSettings({ orgId, project, onChange, onClose, peo
                   {items.map(([key, label, hint]) => (
                     <label key={key} className="set-opt">
                       <span><b>{label}</b><small>{hint}</small></span>
-                      <input type="checkbox" role="switch" checked={!!settings[key]} disabled={saving || !canEdit} onChange={() => saveSetting(key, !settings[key])} />
+                      <input type="checkbox" role="switch" checked={!!settings[key]} disabled={saving || !canManage} onChange={() => saveSetting(key, !settings[key])} />
                     </label>
                   ))}
                 </section>
               ))}
             </div>
-            <p className="muted small" aria-live="polite" style={{ minHeight: 18, margin: "12px 0 0" }}>{saving ? "Enregistrement…" : canEdit ? "Les changements sont enregistrés automatiquement." : "Lecture seule : vous n'avez pas le droit de modifier ce projet."}</p>
+            <p className="muted small" aria-live="polite" style={{ minHeight: 18, margin: "12px 0 0" }}>{saving ? "Enregistrement…" : canManage ? "Les changements sont enregistrés automatiquement." : "Lecture seule : vous n'avez pas le droit de modifier ce projet."}</p>
           </>
         )}
       </div>

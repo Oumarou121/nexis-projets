@@ -2,6 +2,8 @@ import { Router } from "express";
 import { db } from "../db.js";
 import { createLimiter } from "../rateLimit.js";
 import { TOKEN_RE, hashToken } from "./guests.js";
+import { isOpenProject, selectAll } from "../util.js";
+import { todayFor } from "../dates.js";
 
 // PORTAIL DES INVITÉS — lecture seule, sans compte NEXIS.
 // Le jeton arrive dans l'en-tête X-Portal-Token (jamais dans l'URL : pas de trace dans les journaux d'accès).
@@ -39,13 +41,19 @@ router.get("/", async (req, res) => {
   const { data: project } = await db.from("projects").select("id, name, description, status, due_date, color, visibility").eq("id", guest.project_id).maybeSingle();
   if (!project || project.visibility !== "public") return fail();
 
-  const { data: rows, error } = await db
-    .from("tasks")
-    .select("id, title, status, stage_id, priority, due_date, start_date, is_milestone, parent_id")
-    .eq("project_id", project.id)
-    .order("created_at", { ascending: true })
-    .limit(1000);
-  if (error) return res.status(500).json({ error: "Erreur serveur." });
+  let rows;
+  try {
+    rows = await selectAll(() =>
+      db
+        .from("tasks")
+        .select("id, title, status, stage_id, priority, due_date, start_date, is_milestone, parent_id, created_at")
+        .eq("project_id", project.id)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true }),
+    );
+  } catch {
+    return res.status(500).json({ error: "Erreur serveur." });
+  }
 
   // Dernier accès, au plus une fois par 10 minutes (pas une écriture par requête).
   if (!guest.last_access_at || Date.now() - new Date(guest.last_access_at).getTime() > 600_000) {
@@ -56,7 +64,7 @@ router.get("/", async (req, res) => {
   const stages = stageRows ?? [];
   const stageName = new Map(stages.map((st) => [st.id, st.name]));
   const stageColor = new Map(stages.map((st) => [st.id, st.color ?? null]));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayFor(req);
   const tasks = (rows ?? []).map((t) => ({
     id: t.id,
     title: t.title,
@@ -73,11 +81,15 @@ router.get("/", async (req, res) => {
   res.json({
     guest: { email: guest.email },
     project: { name: project.name, description: project.description ?? null, status: project.status, dueDate: project.due_date ?? null, color: project.color ?? null },
-    stats: {
-      total: tasks.length,
-      done: tasks.filter((t) => t.status === "done").length,
-      late: tasks.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < today).length,
-    },
+    // Mêmes règles que la page Projets (util.js) : tâches principales hors jalons ; pas de retard si le projet est clos.
+    stats: (() => {
+      const main = tasks.filter((t) => !t.parentId && !t.isMilestone);
+      return {
+        total: main.length,
+        done: main.filter((t) => t.status === "done").length,
+        late: isOpenProject(project.status) ? main.filter((t) => t.status !== "done" && t.dueDate && t.dueDate < today).length : 0,
+      };
+    })(),
     stages: stages.map((st) => ({ id: st.id, name: st.name, category: st.category, color: st.color ?? null })),
     tasks,
   });

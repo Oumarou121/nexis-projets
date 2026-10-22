@@ -3,9 +3,20 @@ import { db } from "../db.js";
 import { UUID_RE, httpError, requirePermission } from "../auth.js";
 import { assertProject, unwrap } from "../util.js";
 import { MAX_STAGES, assertValidSet, cleanColor, cleanStage, orgTemplate, projectStages, stageApi, DEFAULT_STAGES } from "../stages.js";
+import { assertManager, isOrgAdmin, requireRole } from "../access.js";
+
+// Les étapes structurent le travail de toute l'équipe : seuls les gestionnaires les modifient.
+const manageOnly = async (req, _res, next) => {
+  try {
+    await assertManager(req, "Seul un responsable du projet peut modifier ses étapes.");
+    next();
+  } catch (e) {
+    next(e);
+  }
+};
 
 // Monté sous /api/organizations/:orgId/projects/:projectId/stages.
-// Lecture = projects.read ; créer / renommer / réordonner / supprimer = projects.update.
+// Lecture = projects.read ; créer / renommer / réordonner / supprimer = gestionnaire.
 // Chaque modification répond avec la liste complète et à jour : { stages: [...] }.
 const router = Router({ mergeParams: true });
 
@@ -27,7 +38,7 @@ router.get("/", requirePermission("projects.read"), async (req, res) => {
   res.json({ stages: await listWithCounts(req.params.projectId, req.params.orgId) });
 });
 
-router.post("/", requirePermission("projects.update"), async (req, res) => {
+router.post("/", requireRole("contributor"), manageOnly, async (req, res) => {
   await assertProject(req.params);
   const input = cleanStage(req.body);
   const stages = await projectStages(req.params.projectId, req.params.orgId);
@@ -39,7 +50,7 @@ router.post("/", requirePermission("projects.update"), async (req, res) => {
 });
 
 // Réordonner : la liste doit contenir exactement les étapes du projet, dans le nouvel ordre.
-router.put("/order", requirePermission("projects.update"), async (req, res) => {
+router.put("/order", requireRole("contributor"), manageOnly, async (req, res) => {
   await assertProject(req.params);
   const stages = await projectStages(req.params.projectId, req.params.orgId);
   const ids = req.body?.ids;
@@ -52,7 +63,7 @@ router.put("/order", requirePermission("projects.update"), async (req, res) => {
   res.json({ stages: await listWithCounts(req.params.projectId, req.params.orgId) });
 });
 
-router.patch("/:stageId", requirePermission("projects.update"), async (req, res) => {
+router.patch("/:stageId", requireRole("contributor"), manageOnly, async (req, res) => {
   const id = stageIdOf(req);
   await assertProject(req.params);
   const stages = await projectStages(req.params.projectId, req.params.orgId);
@@ -64,15 +75,24 @@ router.patch("/:stageId", requirePermission("projects.update"), async (req, res)
   if (next.name === current.name && next.category === current.category && next.color === (current.color ?? null)) throw httpError(400, "Aucune modification.");
   assertValidSet(stages.map((s) => (s.id === id ? { ...s, ...next } : s)));
   unwrap(await db.from("project_stages").update(next).eq("id", id).eq("project_id", req.params.projectId).select("id"));
-  // Les tâches suivent la catégorie de leur étape (rapports, retards, avancement).
+  // Les tâches suivent la catégorie de leur étape (rapports, retards, avancement), et le journal des durées
+  // le note : sinon le temps passé « en cours » de ces tâches continuerait de courir dans les rapports.
   if (next.category !== current.category) {
-    unwrap(await db.from("tasks").update({ status: next.category }).eq("stage_id", id).eq("project_id", req.params.projectId).select("id"));
+    const moved = unwrap(
+      await db.from("tasks").update({ status: next.category, updated_at: new Date().toISOString() }).eq("stage_id", id).eq("project_id", req.params.projectId).select("id"),
+    );
+    if (moved.length > 0) {
+      const { error } = await db.from("task_status_history").insert(
+        moved.map((t) => ({ task_id: t.id, stage_id: id, status: next.category, changed_by: req.auth.userId })),
+      );
+      if (error) console.error("[historique] changement de catégorie non journalisé :", error.message);
+    }
   }
   res.json({ stages: await listWithCounts(req.params.projectId, req.params.orgId) });
 });
 
 // Supprimer : si l'étape contient des tâches, ?moveTo=<autre étape> est obligatoire (elles y sont déplacées).
-router.delete("/:stageId", requirePermission("projects.update"), async (req, res) => {
+router.delete("/:stageId", requireRole("contributor"), manageOnly, async (req, res) => {
   const id = stageIdOf(req);
   await assertProject(req.params);
   const stages = await projectStages(req.params.projectId, req.params.orgId);
@@ -102,32 +122,51 @@ export default router;
 
 // ---------------------------------------------------------------------------------------------
 // Modèle par défaut de l'organisation : /api/organizations/:orgId/stage-template.
-// Lecture = projects.read ; modification = projects.create (comme créer un projet). Il ne s'applique
+// Lecture = projects.read ; modification = administrateur de l'organisation. Il ne s'applique
 // qu'aux NOUVEAUX projets : les projets existants gardent leurs étapes.
 export const templateRouter = Router({ mergeParams: true });
+
+// Le modèle vaut pour toute l'organisation : réservé à ses administrateurs.
+const adminOnly = async (req, _res, next) => {
+  try {
+    if (!(await isOrgAdmin(req))) throw httpError(403, "Seul un administrateur de l’organisation peut modifier le modèle d’étapes.");
+    next();
+  } catch (e) {
+    next(e);
+  }
+};
 
 templateRouter.get("/", requirePermission("projects.read"), async (req, res) => {
   const { data } = await db.from("organization_stage_templates").select("id").eq("organization_id", req.params.orgId).limit(1);
   res.json({ stages: await orgTemplate(req.params.orgId), isDefault: (data ?? []).length === 0, builtIn: DEFAULT_STAGES, max: MAX_STAGES });
 });
 
-templateRouter.put("/", requirePermission("projects.create"), async (req, res) => {
+templateRouter.put("/", requirePermission("projects.create"), adminOnly, async (req, res) => {
   const raw = req.body?.stages;
   if (!Array.isArray(raw)) throw httpError(400, "Liste d’étapes attendue.");
   const stages = raw.map(cleanStage);
   assertValidSet(stages);
-  unwrap(await db.from("organization_stage_templates").delete().eq("organization_id", req.params.orgId).select("id"));
-  unwrap(
+  // Nouveau modèle inséré AVANT de retirer l'ancien : si l'insertion échoue, l'ancien reste en place (avant, l'organisation
+  // retombait sans le savoir sur le modèle intégré). Si c'est le retrait qui échoue, on retire le nouveau.
+  const old = unwrap(await db.from("organization_stage_templates").select("id").eq("organization_id", req.params.orgId));
+  const added = unwrap(
     await db
       .from("organization_stage_templates")
       .insert(stages.map((s, i) => ({ organization_id: req.params.orgId, ...s, position: i })))
       .select("id"),
   );
+  if (old.length > 0) {
+    const { error } = await db.from("organization_stage_templates").delete().in("id", old.map((r) => r.id));
+    if (error) {
+      await db.from("organization_stage_templates").delete().in("id", added.map((r) => r.id));
+      unwrap({ error });
+    }
+  }
   res.json({ stages, isDefault: false });
 });
 
 // Revenir au modèle intégré.
-templateRouter.delete("/", requirePermission("projects.create"), async (req, res) => {
+templateRouter.delete("/", requirePermission("projects.create"), adminOnly, async (req, res) => {
   unwrap(await db.from("organization_stage_templates").delete().eq("organization_id", req.params.orgId).select("id"));
   res.json({ stages: DEFAULT_STAGES, isDefault: true });
 });

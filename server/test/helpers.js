@@ -31,7 +31,7 @@ export async function token(n, { secret = SECRET, expiresIn = "5m", claims = {} 
 /**
  * Démarre le faux Identity et l'application.
  *   access  : { [uid] : réponse de /api/me }
- *   orgMembers : userIds actifs de ORG (réponse de /members, réservée à ceux qui ont users.read)
+ *   orgMembers : membres actifs de ORG, userId ou { id, role } (réponse de /members, réservée à ceux qui ont users.read)
  *   seed    : (store) => void, pour remplir la base en mémoire
  */
 export async function boot({ access, orgMembers = [], seed = () => {} }) {
@@ -64,7 +64,13 @@ export async function boot({ access, orgMembers = [], seed = () => {} }) {
     if (m) {
       const org = access[sub].organizations.find((o) => o.organizationId === m[1]);
       if (!org?.permissions.includes("users.read")) return json(403, {});
-      return json(200, { members: orgMembers.map((id) => ({ userId: id, email: `${id}@test.example`, firstName: "P", lastName: id.slice(-2), status: "active" })) });
+      // Un membre : son identifiant, ou { id, role } pour fixer son rôle NEXIS Identity (ex. « viewer »).
+      return json(200, {
+        members: orgMembers.map((m) => {
+          const id = typeof m === "string" ? m : m.id;
+          return { userId: id, email: `${id}@test.example`, firstName: "P", lastName: id.slice(-2), status: "active", ...(m.role ? { role: m.role } : {}) };
+        }),
+      });
     }
     return json(404, {});
   });

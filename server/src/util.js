@@ -47,3 +47,37 @@ export async function assertTask(taskId, projectId) {
   if (!row) throw httpError(404, "Tâche introuvable.");
   return row;
 }
+
+const PAGE = 1000; // plafond de lignes par réponse de Supabase (PostgREST max-rows)
+
+/**
+ * Toutes les lignes d'une lecture, page par page (sans cela, Supabase s'arrête à 1000 sans prévenir).
+ * `build` rend une NOUVELLE requête à chaque appel (une requête Supabase ne se rejoue pas) ; elle doit être
+ * triée sur une colonne unique pour que les pages ne se chevauchent pas.
+ */
+export async function selectAll(build) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const rows = unwrap(await build().range(from, from + PAGE - 1));
+    out.push(...rows);
+    if (rows.length < PAGE) return out;
+  }
+}
+
+// Règles de comptage communes à tous les écrans (liste des projets, tableau de bord, rapports, portail) :
+//   - l'avancement d'un projet compte ses TÂCHES PRINCIPALES ; une sous-tâche fait avancer sa tâche, pas le projet ;
+//   - les jalons sont des repères, pas du travail : ni dans les totaux, ni dans les retards, ni dans la charge ;
+//   - la charge d'une personne compte tout ce qui lui est assigné (sous-tâches comprises) ;
+//   - un projet terminé ou en pause n'a pas de retard : ses tâches ouvertes ne comptent ni en retard ni en charge,
+//     et ne déclenchent ni rappel ni résumé.
+export const isWork = (t) => !t.is_milestone;
+export const countsForProgress = (t) => isWork(t) && !t.parent_id;
+export const CLOSED_PROJECT = ["done", "on_hold"];
+export const isOpenProject = (status) => !CLOSED_PROJECT.includes(status);
+
+/** selectAll sur une longue liste d'identifiants, par lots (l'URL d'un « in » très long serait refusée). */
+export async function selectIn(build, ids, size = 200) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += size) out.push(...(await selectAll(() => build(ids.slice(i, i + size)))));
+  return out;
+}
