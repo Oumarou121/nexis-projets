@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ROLE_HINTS, ROLE_LABELS, usePerms } from "./perms.js";
+import { ROLE_HINTS, ROLE_LABELS, orgBaseOf, usePerms } from "./perms.js";
 import { api } from "./api.js";
 import { ProjectCardsSkeleton, ProjectTimelineSkeleton, Skel } from "./Skeleton.jsx";
 import { BusyLabel, ColorPicker, ErrorState, Icon } from "./ui.jsx";
@@ -75,31 +75,32 @@ const StatusPill = ({ status }) => (
 
 /* ---------- Modal « Créer un projet » ---------- */
 const EMPTY = { name: "", description: "", status: "planned", priority: "medium", dueDate: "", color: 0, visibility: "internal" };
+// [valeur, titre, icône, en bref (carte), en détail (sous les cartes)]
 const VISIBILITY_CHOICES = [
-  ["internal", "Interne", "Toute l'organisation y accède selon son rôle."],
-  ["private", "Privé", "Seuls les membres choisis et les administrateurs le voient."],
-  ["public", "Public", "Comme interne, et partageable en lecture seule avec des personnes extérieures."],
+  ["internal", "Interne", "users", "Toute l'organisation", "Toute l'organisation y accède selon son rôle."],
+  ["private", "Privé", "lock", "Membres choisis", "Seules les personnes ajoutées ci-dessous et les administrateurs le verront."],
+  ["public", "Public", "globe", "Partageable", "Comme interne, et partageable en lecture seule avec des personnes extérieures."],
 ];
 
-// `people` : membres de l'organisation (vide sans le droit de les lister) ; le créateur est responsable d'office.
+/**
+ * Création d'un projet : un nom suffit. La visibilité se choisit d'emblée ; pour un projet privé, l'équipe aussi
+ * (c'est elle qui y donne accès). Le reste (description, dates, priorité, couleur, rôles particuliers) est replié
+ * dans « Plus d'options » et se règle aussi plus tard. Le créateur est responsable d'office.
+ * `people` : membres de l'organisation (vide sans le droit de les lister).
+ */
 function NewProjectDialog({ base, people = [], onClose, onCreated }) {
   const { userId } = usePerms();
   const [form, setForm] = useState(EMPTY);
   const [team, setTeam] = useState([]); // [{ userId, role }] choisis dès la création
-  const [pick, setPick] = useState("");
-  const [pickRole, setPickRole] = useState("contributor");
-  const candidates = people.filter((m) => m.userId !== userId && !team.some((t) => t.userId === m.userId));
-  const nameOf = (id) => memberName(people.find((m) => m.userId === id) ?? {});
-  const addPicked = () => {
-    if (!pick) return;
-    setTeam([...team, { userId: pick, role: pickRole }]);
-    setPick("");
-    setPickRole("contributor");
-  };
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const isPrivate = form.visibility === "private";
+  const person = (id) => people.find((m) => m.userId === id);
+  const nameOf = (id) => memberName(person(id) ?? {});
+  const isAdmin = (id) => orgBaseOf(person(id)?.role) === "manager";
+  const candidates = people.filter((m) => m.userId !== userId && !team.some((t) => t.userId === m.userId));
+  const choice = VISIBILITY_CHOICES.find(([v]) => v === form.visibility);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && !busy && onClose(); // fermeture impossible pendant l'appel serveur
@@ -130,48 +131,47 @@ function NewProjectDialog({ base, people = [], onClose, onCreated }) {
     }
   }
 
-  // Équipe : en vue pour un projet privé (c'est elle qui y donne accès), dans « Plus d'options » sinon.
+  // Équipe : choisir une personne l'ajoute aussitôt (contributeur par défaut, rôle modifiable sur sa ligne).
+  // Un administrateur est responsable partout : son rôle dans le projet ne changerait rien.
   const teamFields = (
-    <fieldset className="pj-f">
-      <legend>{isPrivate ? "Qui y aura accès ?" : "Rôles particuliers"} <span>({isPrivate ? "seules ces personnes et les administrateurs le verront" : "facultatif"})</span></legend>
-      <small className="muted">Vous en êtes responsable. {isPrivate ? "Ajoutez les personnes qui doivent y accéder." : "Toute l’organisation y accède déjà : nommez ici, par exemple, un second responsable."}</small>
+    <div className="pj-f">
+      <label htmlFor="np-add">{isPrivate ? "Membres" : "Rôles particuliers"} <span>{isPrivate ? "(vous en êtes responsable)" : "(facultatif)"}</span></label>
+      {!isPrivate && <small className="muted">Toute l'organisation y accède déjà. Nommez ici, par exemple, un second responsable.</small>}
       {team.length > 0 && (
-        <ul className="pm-list">
+        <ul className="np-team">
           {team.map((t) => (
-            <li key={t.userId} className="pm-row">
-              <span className="pm-who"><strong>{nameOf(t.userId)}</strong></span>
-              <select aria-label={`Rôle de ${nameOf(t.userId)}`} value={t.role} title={ROLE_HINTS[t.role]} onChange={(e) => setTeam(team.map((x) => (x.userId === t.userId ? { ...x, role: e.target.value } : x)))}>
-                {Object.entries(ROLE_LABELS).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
-              </select>
+            <li key={t.userId}>
+              <span className="np-who">{nameOf(t.userId)}</span>
+              {isAdmin(t.userId) ? (
+                <span className="pm-tag" title="Administrateur de l’organisation : responsable de tous les projets.">Responsable partout</span>
+              ) : (
+                <select aria-label={`Rôle de ${nameOf(t.userId)}`} value={t.role} title={ROLE_HINTS[t.role]} onChange={(e) => setTeam(team.map((x) => (x.userId === t.userId ? { ...x, role: e.target.value } : x)))}>
+                  {Object.entries(ROLE_LABELS).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
+                </select>
+              )}
               <button type="button" className="icon-btn" aria-label={`Retirer ${nameOf(t.userId)}`} onClick={() => setTeam(team.filter((x) => x.userId !== t.userId))}><Icon name="close" size={16} /></button>
             </li>
           ))}
         </ul>
       )}
       {people.length > 0 ? (
-        <div className="pm-add">
-          <select aria-label="Ajouter une personne" value={pick} disabled={candidates.length === 0} onChange={(e) => setPick(e.target.value)}>
-            <option value="">{candidates.length === 0 ? "Tout le monde est déjà ajouté" : "Choisir une personne…"}</option>
-            {candidates.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}</option>)}
-          </select>
-          <select aria-label="Rôle dans le projet" value={pickRole} title={ROLE_HINTS[pickRole]} onChange={(e) => setPickRole(e.target.value)}>
-            {Object.entries(ROLE_LABELS).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
-          </select>
-          <button type="button" disabled={!pick} onClick={addPicked}>Ajouter</button>
-        </div>
+        <select id="np-add" value="" disabled={candidates.length === 0} onChange={(e) => e.target.value && setTeam([...team, { userId: e.target.value, role: "contributor" }])}>
+          <option value="">{candidates.length === 0 ? "Tout le monde est déjà ajouté" : "+ Ajouter une personne…"}</option>
+          {candidates.map((m) => <option key={m.userId} value={m.userId}>{memberName(m)}{orgBaseOf(m.role) === "manager" ? " (administrateur)" : ""}</option>)}
+        </select>
       ) : (
-        <small className="muted">La liste des personnes n'est pas disponible avec votre rôle : vous pourrez ajouter l'équipe ensuite, dans les paramètres du projet.</small>
+        <small className="muted">La liste des personnes n'est pas disponible avec votre rôle : vous ajouterez l'équipe ensuite, dans les paramètres du projet.</small>
       )}
-    </fieldset>
+    </div>
   );
 
   return (
     <div className="pj-ov" onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}>
-      <form className="pj-md" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="pj-md-t" aria-busy={busy}>
+      <form className="pj-md np" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="pj-md-t" aria-busy={busy}>
         <div className="pj-mh">
           <div>
-            <h2 id="pj-md-t">Créer un projet</h2>
-            <p>Un nom suffit. Tout le reste se règle aussi plus tard, dans les paramètres du projet.</p>
+            <h2 id="pj-md-t">Nouveau projet</h2>
+            <p>Seul le nom est obligatoire.</p>
           </div>
           <button type="button" className="pj-x" aria-label="Fermer" disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button>
         </div>
@@ -181,25 +181,29 @@ function NewProjectDialog({ base, people = [], onClose, onCreated }) {
             <input id="np-name" type="text" autoFocus placeholder="Ex. : Refonte du site" value={form.name} onChange={set("name")} />
           </div>
           <fieldset className="pj-f">
-            <legend>Visibilité</legend>
-            <div className="pj-pr">
-              {VISIBILITY_CHOICES.map(([v, l, hint]) => (
-                <label key={v} className="pj-rb" title={hint}>
+            <legend>Qui peut le voir ?</legend>
+            <div className="np-vis">
+              {VISIBILITY_CHOICES.map(([v, l, icon, short]) => (
+                <label key={v} className="np-vc">
                   <input type="radio" name="np-vis" value={v} checked={form.visibility === v} onChange={set("visibility")} />
-                  <span>{l}</span>
+                  <span>
+                    <Icon name={icon} size={18} />
+                    <b>{l}</b>
+                    <small>{short}</small>
+                  </span>
                 </label>
               ))}
             </div>
-            <small className="muted">{VISIBILITY_CHOICES.find(([v]) => v === form.visibility)?.[2]}</small>
+            <small className="muted">{choice?.[4]}</small>
           </fieldset>
           {isPrivate && teamFields}
           <details className="pj-opts">
             <summary>Plus d’options <span>description, échéance, priorité, couleur{isPrivate ? "" : ", rôles"}</span></summary>
             <div className="pj-f">
-              <label htmlFor="np-desc">Description <span>(facultatif)</span></label>
-              <textarea id="np-desc" rows={3} placeholder="À quoi sert ce projet, pour qui ?" value={form.description} onChange={set("description")} />
+              <label htmlFor="np-desc">Description</label>
+              <textarea id="np-desc" rows={2} placeholder="À quoi sert ce projet, pour qui ?" value={form.description} onChange={set("description")} />
             </div>
-            <div className="pj-g2">
+            <div className="np-g3">
               <div className="pj-f">
                 <label htmlFor="np-status">Statut</label>
                 <select id="np-status" value={form.status} onChange={set("status")}>
@@ -207,30 +211,25 @@ function NewProjectDialog({ base, people = [], onClose, onCreated }) {
                 </select>
               </div>
               <div className="pj-f">
-                <label htmlFor="np-due">Échéance <span>(facultatif)</span></label>
+                <label htmlFor="np-prio">Priorité</label>
+                <select id="np-prio" value={form.priority} onChange={set("priority")}>
+                  {Object.entries(PRIORITY).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="pj-f">
+                <label htmlFor="np-due">Échéance</label>
                 <input id="np-due" type="date" value={form.dueDate} onChange={set("dueDate")} />
               </div>
             </div>
             <fieldset className="pj-f">
-              <legend>Priorité</legend>
-              <div className="pj-pr">
-                {Object.entries(PRIORITY).map(([v, l]) => (
-                  <label key={v} className="pj-rb">
-                    <input type="radio" name="np-prio" value={v} checked={form.priority === v} onChange={set("priority")} />
-                    <span>{l}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="pj-f">
-              <legend>Couleur du projet</legend>
+              <legend>Couleur</legend>
               <ColorPicker value={form.color} onChange={(c) => setForm({ ...form, color: c })} />
             </fieldset>
             {!isPrivate && teamFields}
           </details>
           {err && <p className="error" role="alert" style={{ padding: 0, margin: 0 }}>{err}</p>}
         </div>
-        <div className="pj-mf">
+        <div className="pj-mf np-foot">
           <button type="button" className="pj-ghost" disabled={busy} onClick={onClose}>Annuler</button>
           <button className={`pj-ok bs ${busy ? "bs-run" : ""}`} disabled={form.name.trim().length < 2 || busy}><BusyLabel busy={busy}>Créer le projet</BusyLabel></button>
         </div>

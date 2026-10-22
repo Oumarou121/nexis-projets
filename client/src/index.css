@@ -947,6 +947,34 @@ h1, h2 { font-family: Sora, "DM Sans", system-ui, sans-serif; }
 .pj-opts[open] > summary::before { transform: rotate(90deg); }
 .pj-opts > summary span { font-weight: 400; color: var(--mut); font-size: 12.5px; }
 .pj-opts > :not(summary) + :not(summary) { margin-top: 18px; }
+/* Formulaire « Nouveau projet ». Une seule colonne qui ne déborde jamais (le contenu le plus large rétrécit). */
+.pj-md { grid-template-columns: minmax(0, 1fr); }
+.pj-mb > * { min-width: 0; }
+.np-vis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.np-vc { position: relative; }
+.np-vc input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
+.np-vc span { display: grid; gap: 2px; height: 100%; padding: 12px 14px; border: 1px solid var(--bd-s); border-radius: 14px; color: var(--mut); transition: border-color .15s, background .15s; }
+.np-vc span svg { margin-bottom: 4px; }
+.np-vc b { color: var(--tx); font-size: 14px; font-weight: 600; }
+.np-vc small { font-size: 12.5px; line-height: 1.35; }
+.np-vc:hover span { background: var(--hov); }
+.np-vc input:checked + span { border: 2px solid var(--tx); padding: 11px 13px; color: var(--tx); background: var(--hov); }
+.np-vc input:focus-visible + span { outline: 2px solid var(--pri); outline-offset: 2px; }
+.np-team { list-style: none; margin: 0; padding: 0; border: 1px solid var(--bd); border-radius: 14px; }
+.np-team li { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 14px; }
+.np-team li + li { border-top: 1px solid var(--bd); }
+.np-who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
+.pj-md .np-team select { flex: none; width: 150px; min-height: 36px; padding: 6px 10px; border-radius: 10px; font-size: 13.5px; }
+.np-g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.np-foot { justify-content: flex-end; }
+@media (max-width: 640px) {
+  .np-vis { grid-template-columns: minmax(0, 1fr); }
+  .np-vc span { grid-template-columns: auto auto 1fr; align-items: center; column-gap: 10px; }
+  .np-vc span svg { margin: 0; }
+  .np-vc small { text-align: right; }
+  .np-g3 { grid-template-columns: 1fr 1fr; }
+  .np-g3 > :last-child { grid-column: 1 / -1; }
+}
 .pj-md input[type="text"], .pj-md input[type="date"], .pj-md select, .pj-md textarea { font: 500 15px "DM Sans", sans-serif; color: var(--tx); background: var(--bg); border: 1px solid var(--bd-s); border-radius: 14px; padding: 12px 14px; min-height: 46px; width: 100%; }
 .pj-md textarea { min-height: 92px; resize: none; }
 .pj-md input:focus, .pj-md select:focus, .pj-md textarea:focus { border-color: var(--pri); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pri) 22%, transparent); }
